@@ -72,9 +72,7 @@ std::optional<PriceLevel> BookSide::best() const noexcept {
     return levels_.front();
 }
 
-std::span<const PriceLevel> BookSide::levels() const noexcept {
-    return {levels_.data(), size_};
-}
+std::span<const PriceLevel> BookSide::levels() const noexcept { return {levels_.data(), size_}; }
 
 std::size_t BookSide::size() const noexcept { return size_; }
 
@@ -107,9 +105,8 @@ ApplyResult OrderBook::apply(const BookUpdate& update) noexcept {
         }
     }
 
-    const auto change = update.side == Side::Bid
-                            ? bids_.apply(update.price_ticks, update.quantity)
-                            : asks_.apply(update.price_ticks, update.quantity);
+    const auto change = update.side == Side::Bid ? bids_.apply(update.price_ticks, update.quantity)
+                                                 : asks_.apply(update.price_ticks, update.quantity);
     last_sequence_number_ = update.sequence_number;
     return {UpdateStatus::Accepted, change};
 }
@@ -161,8 +158,8 @@ std::optional<double> OrderBook::mid_price() const noexcept {
         return std::nullopt;
     }
 
-    const auto total = static_cast<long double>(bid->price_ticks) +
-                       static_cast<long double>(ask->price_ticks);
+    const auto total =
+        static_cast<long double>(bid->price_ticks) + static_cast<long double>(ask->price_ticks);
     return static_cast<double>(total / 2.0L);
 }
 

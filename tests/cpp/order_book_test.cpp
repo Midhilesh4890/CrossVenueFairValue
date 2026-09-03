@@ -19,12 +19,12 @@ using fairvaluelab::PriceLevel;
 using fairvaluelab::Side;
 using fairvaluelab::UpdateStatus;
 
-#define FVL_CHECK(condition)                                                                     \
-    do {                                                                                         \
-        if (!(condition)) {                                                                      \
-            std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition << '\n'; \
-            return false;                                                                        \
-        }                                                                                        \
+#define FVL_CHECK(condition)                                                                       \
+    do {                                                                                           \
+        if (!(condition)) {                                                                        \
+            std::cerr << __FILE__ << ':' << __LINE__ << ": check failed: " #condition << '\n';     \
+            return false;                                                                          \
+        }                                                                                          \
     } while (false)
 
 BookUpdate update(const std::uint64_t sequence, const Side side, const std::int64_t price,
@@ -32,9 +32,7 @@ BookUpdate update(const std::uint64_t sequence, const Side side, const std::int6
     return BookUpdate{side, price, quantity, sequence * 100, sequence * 100 + 25, sequence};
 }
 
-bool approximately_equal(const double lhs, const double rhs) {
-    return std::abs(lhs - rhs) < 1e-12;
-}
+bool approximately_equal(const double lhs, const double rhs) { return std::abs(lhs - rhs) < 1e-12; }
 
 bool test_empty_book() {
     const OrderBook book;
@@ -152,10 +150,10 @@ bool test_snapshot_and_reset() {
     OrderBook book{3};
     FVL_CHECK(book.apply(update(1, Side::Bid, 1, 1)).accepted());
 
-    constexpr std::array bids{
-        PriceLevel{99, 9}, PriceLevel{101, 11}, PriceLevel{100, 10}, PriceLevel{98, 8}};
-    constexpr std::array asks{
-        PriceLevel{105, 50}, PriceLevel{103, 30}, PriceLevel{104, 40}, PriceLevel{106, 60}};
+    constexpr std::array bids{PriceLevel{99, 9}, PriceLevel{101, 11}, PriceLevel{100, 10},
+                              PriceLevel{98, 8}};
+    constexpr std::array asks{PriceLevel{105, 50}, PriceLevel{103, 30}, PriceLevel{104, 40},
+                              PriceLevel{106, 60}};
     book.apply_snapshot(bids, asks, 50);
 
     FVL_CHECK(book.last_sequence_number() == 50);
@@ -206,10 +204,10 @@ bool test_edge_cases() {
     FVL_CHECK(book.apply(update(1, invalid_side, 100, 10)).status == UpdateStatus::InvalidSide);
     FVL_CHECK(!book.last_sequence_number().has_value());
 
-    FVL_CHECK(book.apply(update(1, Side::Bid, std::numeric_limits<std::int64_t>::min(), 1))
-                  .accepted());
-    FVL_CHECK(book.apply(update(2, Side::Ask, std::numeric_limits<std::int64_t>::max(), 1))
-                  .accepted());
+    FVL_CHECK(
+        book.apply(update(1, Side::Bid, std::numeric_limits<std::int64_t>::min(), 1)).accepted());
+    FVL_CHECK(
+        book.apply(update(2, Side::Ask, std::numeric_limits<std::int64_t>::max(), 1)).accepted());
     FVL_CHECK(!book.spread().has_value());
     FVL_CHECK(book.mid_price().has_value());
     FVL_CHECK(approximately_equal(*book.mid_price(), -0.5));

@@ -3,6 +3,7 @@
 #include <charconv>
 #include <chrono>
 #include <cstdint>
+#include <exception>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -47,8 +48,8 @@ int main(const int argc, const char* const argv[]) {
         constexpr fairvaluelab::PriceTicks reference_price = 1'000'000;
 
         for (std::uint64_t index = 0; index < event_count; ++index) {
-            const auto side = (random() & 1U) == 0U ? fairvaluelab::Side::Bid
-                                                    : fairvaluelab::Side::Ask;
+            const auto side =
+                (random() & 1U) == 0U ? fairvaluelab::Side::Bid : fairvaluelab::Side::Ask;
             const auto distance = static_cast<fairvaluelab::PriceTicks>(random() % 96U);
             const auto price = side == fairvaluelab::Side::Bid ? reference_price - distance
                                                                : reference_price + 1 + distance;
@@ -73,6 +74,10 @@ int main(const int argc, const char* const argv[]) {
 
         const auto elapsed_ns =
             std::chrono::duration_cast<std::chrono::nanoseconds>(finish - start).count();
+        if (elapsed_ns <= 0) {
+            std::cerr << "benchmark duration was below the clock resolution\n";
+            return 1;
+        }
         const auto elapsed_seconds = static_cast<double>(elapsed_ns) / 1'000'000'000.0;
         const auto updates_per_second = static_cast<double>(event_count) / elapsed_seconds;
         const auto average_ns = static_cast<double>(elapsed_ns) / static_cast<double>(event_count);

@@ -81,8 +81,7 @@ void print_level(const char* label, const std::optional<PriceLevel> level) {
     std::cout << level->price_ticks << " (quantity " << level->quantity << ")\n";
 }
 
-template <typename Value>
-void print_optional(const char* label, const std::optional<Value> value) {
+template <typename Value> void print_optional(const char* label, const std::optional<Value> value) {
     std::cout << label << ": ";
     if (value.has_value()) {
         std::cout << *value << '\n';
