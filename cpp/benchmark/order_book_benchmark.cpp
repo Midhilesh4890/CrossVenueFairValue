@@ -22,7 +22,7 @@ bool parse_event_count(const std::string_view value, std::uint64_t& event_count)
     return error == std::errc{} && end == value.data() + value.size() && event_count != 0;
 }
 
-} // namespace
+}
 
 int main(const int argc, const char* const argv[]) {
     std::uint64_t event_count = default_event_count;
@@ -55,6 +55,7 @@ int main(const int argc, const char* const argv[]) {
                                                                : reference_price + 1 + distance;
             const auto quantity = (random() % 20U) == 0U ? 0U : 1U + random() % 1'000U;
             events.push_back(fairvaluelab::BookUpdate{
+                0,
                 side,
                 price,
                 quantity,

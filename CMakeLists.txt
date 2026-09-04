@@ -29,7 +29,7 @@ function(fvl_enable_sanitizers target)
     endif()
 endfunction()
 
-add_library(fairvaluelab_order_book cpp/src/order_book.cpp)
+add_library(fairvaluelab_order_book cpp/src/order_book.cpp cpp/src/venue.cpp)
 add_library(FairValueLab::order_book ALIAS fairvaluelab_order_book)
 target_include_directories(
     fairvaluelab_order_book
@@ -66,4 +66,10 @@ if(BUILD_TESTING)
     fvl_enable_warnings(fvl_replay_determinism_test)
     fvl_enable_sanitizers(fvl_replay_determinism_test)
     add_test(NAME replay_determinism COMMAND fvl_replay_determinism_test)
+
+    add_executable(fvl_venue_test tests/cpp/venue_test.cpp)
+    target_link_libraries(fvl_venue_test PRIVATE FairValueLab::order_book)
+    fvl_enable_warnings(fvl_venue_test)
+    fvl_enable_sanitizers(fvl_venue_test)
+    add_test(NAME venue COMMAND fvl_venue_test)
 endif()

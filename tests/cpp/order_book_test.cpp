@@ -29,7 +29,7 @@ using fairvaluelab::UpdateStatus;
 
 BookUpdate update(const std::uint64_t sequence, const Side side, const std::int64_t price,
                   const std::uint64_t quantity) {
-    return BookUpdate{side, price, quantity, sequence * 100, sequence * 100 + 25, sequence};
+    return BookUpdate{0, side, price, quantity, sequence * 100, sequence * 100 + 25, sequence};
 }
 
 bool approximately_equal(const double lhs, const double rhs) { return std::abs(lhs - rhs) < 1e-12; }
@@ -226,7 +226,7 @@ struct TestCase {
     bool (*run)();
 };
 
-} // namespace
+}
 
 int main() {
     constexpr std::array tests{
