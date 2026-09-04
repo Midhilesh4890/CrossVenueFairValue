@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string_view>
+#include <vector>
 
 namespace fairvaluelab {
 
@@ -18,7 +19,7 @@ class VenueAdapter {
     virtual ~VenueAdapter() = default;
 
     [[nodiscard]] virtual AdapterStatus normalize(std::string_view raw_record,
-                                                  BookUpdate& output) const = 0;
+                                                  std::vector<BookUpdate>& output) const = 0;
 };
 
 }
