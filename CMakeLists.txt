@@ -41,7 +41,9 @@ endfunction()
 add_library(
     fairvaluelab_order_book
     cpp/src/capture_converter.cpp
+    cpp/src/feature_emitter.cpp
     cpp/src/multi_replay.cpp
+    cpp/src/normalized_csv.cpp
     cpp/src/order_book.cpp
     cpp/src/venue.cpp
     cpp/src/venue_adapters.cpp
@@ -71,6 +73,11 @@ add_executable(fvl_multi_replay cpp/src/multi_replay_main.cpp)
 target_link_libraries(fvl_multi_replay PRIVATE FairValueLab::order_book)
 fvl_enable_warnings(fvl_multi_replay)
 fvl_enable_sanitizers(fvl_multi_replay)
+
+add_executable(fvl_features cpp/src/features_main.cpp)
+target_link_libraries(fvl_features PRIVATE FairValueLab::order_book)
+fvl_enable_warnings(fvl_features)
+fvl_enable_sanitizers(fvl_features)
 
 add_executable(fvl_order_book_benchmark cpp/benchmark/order_book_benchmark.cpp)
 target_link_libraries(fvl_order_book_benchmark PRIVATE FairValueLab::order_book)
@@ -109,4 +116,10 @@ if(BUILD_TESTING)
     fvl_enable_warnings(fvl_multi_venue_test)
     fvl_enable_sanitizers(fvl_multi_venue_test)
     add_test(NAME multi_venue COMMAND fvl_multi_venue_test)
+
+    add_executable(fvl_feature_test tests/cpp/feature_test.cpp)
+    target_link_libraries(fvl_feature_test PRIVATE FairValueLab::order_book)
+    fvl_enable_warnings(fvl_feature_test)
+    fvl_enable_sanitizers(fvl_feature_test)
+    add_test(NAME features COMMAND fvl_feature_test)
 endif()
