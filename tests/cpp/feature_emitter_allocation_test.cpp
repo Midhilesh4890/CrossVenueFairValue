@@ -50,13 +50,11 @@ int main() {
         .clock_interval_ns = 1'000'000'000,
         .event_window = 100,
         .time_window_ns = 1'000'000'000,
-        .multi_level_depth = 5,
+        .band_ticks = 5,
     }};
     static_cast<void>(emitter.process(fairvaluelab::BookUpdate{7, fairvaluelab::Side::Bid, 100,
                                                                10, 0, 1, 1}));
 
-    // Warm both sides. Only rejected updates without clock emissions are
-    // allocation-free; accepted updates still allocate output/history storage.
     static_cast<void>(emitter.process(fairvaluelab::BookUpdate{
         7, fairvaluelab::Side::Ask, 102, 10, 1, 2, 2}));
     allocation_count.store(0, std::memory_order_relaxed);

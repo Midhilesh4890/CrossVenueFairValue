@@ -73,10 +73,23 @@ to the future venue adapter.
 
 ## Feature emitter allocation behavior
 
-The feature emitter stores previous book levels in fixed-capacity arrays and copies only the
-configured multi-level depth (bounded by book capacity). Book snapshots require no heap allocation.
+The feature emitter stores previous book levels in fixed-capacity arrays and copies all
+retained levels up to book capacity. Book snapshots require no heap allocation.
 For an existing venue, duplicate, stale, and sequence-gap updates require no allocation or
 deallocation when no clock sample is due. Accepted updates and clock samples still allocate for
 returned feature vectors and rolling history; the full emitter is not allocation-free.
-The C++ suite checks rejected-update allocations and snapshot behavior at different configured depths,
+The C++ suite checks rejected-update allocations and snapshot behavior at different configured price bands,
 rejected updates, deletion, and refilling an empty side.
+
+## Multi-level order flow imbalance
+
+`FeatureEmitterConfig::band_ticks` and `fvl_features --band-ticks N` select a positive
+price-band radius in ticks. Each accepted book update uses the pre-update midpoint,
+rounded to the nearest tick with half ticks rounded away from zero. Previous and current
+quantities at each price within that same inclusive band are compared using weight
+`1 / (1 + distance)`. Bid increases are positive and ask increases are negative.
+Unchanged prices contribute zero regardless of their rank or band membership.
+
+An event has no multi-level OFI when the pre-update book has an empty side or the union
+contains no in-band levels. Event and time windows sum defined contributions and remain
+absent when they contain none. Absent values are written as empty CSV fields.

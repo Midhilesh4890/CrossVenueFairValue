@@ -27,7 +27,7 @@ int main(const int argc, const char* const argv[]) {
     if (argc < 3 || (argc - 3) % 2 != 0) {
         std::cerr << "usage: fvl_features <normalized.csv> <features.csv> "
                      "[--clock-interval-ns N] [--event-window N] [--time-window-ns N] "
-                     "[--multi-level-depth N]\n";
+                     "[--band-ticks N]\n";
         return 1;
     }
 
@@ -45,11 +45,8 @@ int main(const int argc, const char* const argv[]) {
                 config.event_window = static_cast<std::size_t>(value);
             } else if (option == "--time-window-ns") {
                 config.time_window_ns = value;
-            } else if (option == "--multi-level-depth") {
-                if (value > std::numeric_limits<std::size_t>::max()) {
-                    throw std::invalid_argument("multi-level depth is too large");
-                }
-                config.multi_level_depth = static_cast<std::size_t>(value);
+            } else if (option == "--band-ticks") {
+                config.band_ticks = value;
             } else {
                 throw std::invalid_argument("unknown option");
             }

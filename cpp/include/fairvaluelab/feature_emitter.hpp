@@ -37,8 +37,8 @@ struct FeatureSet {
     TimestampNs time_since_last_update_ns{};
     double ofi_event_window{};
     double ofi_time_window{};
-    double multi_level_ofi_event_window{};
-    double multi_level_ofi_time_window{};
+    std::optional<double> multi_level_ofi_event_window{};
+    std::optional<double> multi_level_ofi_time_window{};
     double signed_trade_volume_event_window{};
     double signed_trade_volume_time_window{};
     std::uint64_t trade_count_event_window{};
@@ -51,7 +51,7 @@ struct FeatureEmitterConfig {
     TimestampNs clock_interval_ns{100'000'000};
     std::size_t event_window{100};
     TimestampNs time_window_ns{1'000'000'000};
-    std::size_t multi_level_depth{5};
+    std::uint64_t band_ticks{5};
 };
 
 [[nodiscard]] FeatureSet compute_features(const OrderBook& book, VenueId venue_id,
@@ -72,7 +72,7 @@ class FeatureEmitter {
         struct OrderFlow {
             TimestampNs timestamp_ns{};
             double value{};
-            double multi_level_value{};
+            std::optional<double> multi_level_value;
         };
 
         struct TradeFlow {

@@ -111,51 +111,80 @@ long double ask_flow(const std::span<const PriceLevel> previous,
 }
 
 std::optional<Quantity> quantity_at(const std::span<const PriceLevel> levels,
-                                    const std::size_t depth, const std::int64_t price) {
-    const auto count = std::min(depth, levels.size());
-    for (std::size_t index = 0; index < count; ++index) {
-        if (levels[index].price_ticks == price) {
-            return levels[index].quantity;
+                                    const std::int64_t price) {
+    for (const auto& level : levels) {
+        if (level.price_ticks == price) {
+            return level.quantity;
         }
     }
     return std::nullopt;
 }
 
-long double weighted_side_flow(const std::span<const PriceLevel> previous,
-                               const std::span<const PriceLevel> current,
-                               const std::size_t depth, const long double sign) {
-    long double value = 0.0L;
-    const auto current_count = std::min(depth, current.size());
-    for (std::size_t index = 0; index < current_count; ++index) {
-        const auto old_quantity = quantity_at(previous, depth, current[index].price_ticks).value_or(0);
-        const auto change = static_cast<long double>(current[index].quantity) -
-                            static_cast<long double>(old_quantity);
-        value += sign * change / static_cast<long double>(index + 1);
+std::int64_t rounded_midpoint(const std::int64_t bid, const std::int64_t ask) {
+    auto reference = bid / 2 + ask / 2;
+    const auto remainder = bid % 2 + ask % 2;
+    reference += remainder / 2;
+    if (remainder % 2 > 0 && reference >= 0) {
+        ++reference;
+    } else if (remainder % 2 < 0 && reference <= 0) {
+        --reference;
     }
+    return reference;
+}
 
-    const auto previous_count = std::min(depth, previous.size());
-    for (std::size_t index = 0; index < previous_count; ++index) {
-        if (!quantity_at(current, depth, previous[index].price_ticks).has_value()) {
-            value -= sign * static_cast<long double>(previous[index].quantity) /
-                     static_cast<long double>(index + 1);
+std::uint64_t tick_distance(const std::int64_t price, const std::int64_t reference) {
+    return price >= reference
+               ? static_cast<std::uint64_t>(price) - static_cast<std::uint64_t>(reference)
+               : static_cast<std::uint64_t>(reference) - static_cast<std::uint64_t>(price);
+}
+
+std::optional<long double> weighted_side_flow(const std::span<const PriceLevel> previous,
+                                              const std::span<const PriceLevel> current,
+                                              const std::int64_t reference,
+                                              const std::uint64_t band_ticks,
+                                              const long double sign) {
+    std::optional<long double> value;
+    const auto add_change = [&](const std::int64_t price, const long double change) {
+        const auto distance = tick_distance(price, reference);
+        if (distance <= band_ticks) {
+            value = value.value_or(0.0L) + sign * change /
+                        (1.0L + static_cast<long double>(distance));
+        }
+    };
+    for (const auto& level : current) {
+        const auto old_quantity = quantity_at(previous, level.price_ticks).value_or(0);
+        add_change(level.price_ticks, static_cast<long double>(level.quantity) -
+                                          static_cast<long double>(old_quantity));
+    }
+    for (const auto& level : previous) {
+        if (!quantity_at(current, level.price_ticks).has_value()) {
+            add_change(level.price_ticks, -static_cast<long double>(level.quantity));
         }
     }
     return value;
 }
 
-double multi_level_flow(const std::span<const PriceLevel> previous_bids,
-                        const std::span<const PriceLevel> previous_asks,
-                        const std::span<const PriceLevel> current_bids,
-                        const std::span<const PriceLevel> current_asks,
-                        const std::size_t depth) {
-    return static_cast<double>(weighted_side_flow(previous_bids, current_bids, depth, 1.0L) +
-                               weighted_side_flow(previous_asks, current_asks, depth, -1.0L));
+std::optional<double> multi_level_flow(const std::span<const PriceLevel> previous_bids,
+                                       const std::span<const PriceLevel> previous_asks,
+                                       const std::span<const PriceLevel> current_bids,
+                                       const std::span<const PriceLevel> current_asks,
+                                       const std::uint64_t band_ticks) {
+    if (previous_bids.empty() || previous_asks.empty()) {
+        return std::nullopt;
+    }
+    const auto reference = rounded_midpoint(previous_bids.front().price_ticks,
+                                            previous_asks.front().price_ticks);
+    const auto bids = weighted_side_flow(previous_bids, current_bids, reference, band_ticks, 1.0L);
+    const auto asks = weighted_side_flow(previous_asks, current_asks, reference, band_ticks, -1.0L);
+    if (!bids.has_value() && !asks.has_value()) {
+        return std::nullopt;
+    }
+    return static_cast<double>(bids.value_or(0.0L) + asks.value_or(0.0L));
 }
 
 void snapshot(std::array<PriceLevel, fairvaluelab::BookSide::maximum_depth>& destination,
-              std::size_t& count, const std::span<const PriceLevel> levels,
-              const std::size_t depth) {
-    count = std::min({depth, levels.size(), destination.size()});
+              std::size_t& count, const std::span<const PriceLevel> levels) {
+    count = levels.size();
     std::copy_n(levels.begin(), count, destination.begin());
 }
 
@@ -184,9 +213,11 @@ void write_row(std::ostream& output, const FeatureSet& features) {
     output << ',' << features.bid_depth << ',' << features.ask_depth << ',';
     write_optional(output, features.book_slope);
     output << ',' << features.time_since_last_update_ns << ',' << features.ofi_event_window << ','
-           << features.ofi_time_window << ',' << features.multi_level_ofi_event_window << ','
-           << features.multi_level_ofi_time_window << ','
-           << features.signed_trade_volume_event_window << ','
+           << features.ofi_time_window << ',';
+    write_optional(output, features.multi_level_ofi_event_window);
+    output << ',';
+    write_optional(output, features.multi_level_ofi_time_window);
+    output << ',' << features.signed_trade_volume_event_window << ','
            << features.signed_trade_volume_time_window << ','
            << features.trade_count_event_window << ',' << features.trade_count_time_window << ',';
     write_optional(output, features.trade_vwap_deviation_event_window);
@@ -222,8 +253,8 @@ fairvaluelab::FeatureSet fairvaluelab::compute_features(
         sample_timestamp_ns - local_receipt_timestamp_ns,
         0.0,
         0.0,
-        0.0,
-        0.0,
+        std::nullopt,
+        std::nullopt,
         0.0,
         0.0,
         0,
@@ -238,7 +269,7 @@ fairvaluelab::FeatureEmitter::FeatureEmitter(const TimestampNs clock_interval_ns
 
 fairvaluelab::FeatureEmitter::FeatureEmitter(FeatureEmitterConfig config) : config_(config) {
     if (config_.clock_interval_ns == 0 || config_.event_window == 0 ||
-        config_.time_window_ns == 0 || config_.multi_level_depth == 0) {
+        config_.time_window_ns == 0 || config_.band_ticks == 0) {
         throw std::invalid_argument("feature emitter configuration must be positive");
     }
 }
@@ -273,12 +304,18 @@ fairvaluelab::FeatureSet fairvaluelab::FeatureEmitter::features(
             : state.order_flow.begin();
     for (auto item = order_event_begin; item != state.order_flow.end(); ++item) {
         output.ofi_event_window += item->value;
-        output.multi_level_ofi_event_window += item->multi_level_value;
+        if (item->multi_level_value.has_value()) {
+            output.multi_level_ofi_event_window =
+                output.multi_level_ofi_event_window.value_or(0.0) + *item->multi_level_value;
+        }
     }
     for (const auto& item : state.order_flow) {
         if (item.timestamp_ns >= cutoff) {
             output.ofi_time_window += item.value;
-            output.multi_level_ofi_time_window += item.multi_level_value;
+            if (item.multi_level_value.has_value()) {
+                output.multi_level_ofi_time_window =
+                    output.multi_level_ofi_time_window.value_or(0.0) + *item.multi_level_value;
+            }
         }
     }
 
@@ -362,11 +399,9 @@ fairvaluelab::FeatureEmitter::process(const BookUpdate& update) {
         const auto value = static_cast<double>(bid_flow(previous_bids, current_bids) +
                                                ask_flow(previous_asks, current_asks));
         const auto multi_value = multi_level_flow(previous_bids, previous_asks, current_bids,
-                                                   current_asks, config_.multi_level_depth);
-        snapshot(venue_state.previous_bids, venue_state.previous_bid_count, current_bids,
-                 config_.multi_level_depth);
-        snapshot(venue_state.previous_asks, venue_state.previous_ask_count, current_asks,
-                 config_.multi_level_depth);
+                                                   current_asks, config_.band_ticks);
+        snapshot(venue_state.previous_bids, venue_state.previous_bid_count, current_bids);
+        snapshot(venue_state.previous_asks, venue_state.previous_ask_count, current_asks);
         state->second.order_flow.push_back(
             VenueState::OrderFlow{update.local_receipt_timestamp_ns, value, multi_value});
         state->second.exchange_timestamp_ns = update.exchange_timestamp_ns;
