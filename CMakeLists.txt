@@ -41,6 +41,7 @@ endfunction()
 add_library(
     fairvaluelab_order_book
     cpp/src/capture_converter.cpp
+    cpp/src/capture_validation.cpp
     cpp/src/feature_emitter.cpp
     cpp/src/multi_replay.cpp
     cpp/src/normalized_csv.cpp
@@ -68,6 +69,11 @@ add_executable(fvl_convert_capture cpp/src/convert_capture.cpp)
 target_link_libraries(fvl_convert_capture PRIVATE FairValueLab::order_book)
 fvl_enable_warnings(fvl_convert_capture)
 fvl_enable_sanitizers(fvl_convert_capture)
+
+add_executable(fvl_validate_capture cpp/src/validate_capture.cpp)
+target_link_libraries(fvl_validate_capture PRIVATE FairValueLab::order_book)
+fvl_enable_warnings(fvl_validate_capture)
+fvl_enable_sanitizers(fvl_validate_capture)
 
 add_executable(fvl_multi_replay cpp/src/multi_replay_main.cpp)
 target_link_libraries(fvl_multi_replay PRIVATE FairValueLab::order_book)
@@ -122,6 +128,12 @@ if(BUILD_TESTING)
     fvl_enable_warnings(fvl_feature_test)
     fvl_enable_sanitizers(fvl_feature_test)
     add_test(NAME features COMMAND fvl_feature_test)
+
+    add_executable(fvl_capture_validation_test tests/cpp/capture_validation_test.cpp)
+    target_link_libraries(fvl_capture_validation_test PRIVATE FairValueLab::order_book)
+    fvl_enable_warnings(fvl_capture_validation_test)
+    fvl_enable_sanitizers(fvl_capture_validation_test)
+    add_test(NAME capture_validation COMMAND fvl_capture_validation_test)
 
     add_executable(fvl_feature_emitter_allocation_test tests/cpp/feature_emitter_allocation_test.cpp)
     target_link_libraries(fvl_feature_emitter_allocation_test PRIVATE FairValueLab::order_book)

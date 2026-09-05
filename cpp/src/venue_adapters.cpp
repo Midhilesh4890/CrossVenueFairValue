@@ -276,6 +276,38 @@ AdapterStatus fairvaluelab::BinanceAdapter::normalize(const std::string_view raw
         if (payload->contains("data")) {
             payload = &payload->at("data");
         }
+        if (payload->contains("lastUpdateId")) {
+            const auto& bids = payload->at("bids");
+            const auto& asks = payload->at("asks");
+            if (!bids.is_array() || !asks.is_array()) {
+                return AdapterStatus::Malformed;
+            }
+            for (const auto& level : bids) {
+                if (!level.is_array() || level.size() < 2 ||
+                    !append_update(config_, Side::Bid,
+                                   level.at(0).get_ref<const std::string&>(),
+                                   level.at(1).get_ref<const std::string&>(),
+                                   envelope->local_receipt_timestamp_ns,
+                                   envelope->local_receipt_timestamp_ns, output)) {
+                    output.clear();
+                    return AdapterStatus::Malformed;
+                }
+            }
+            for (const auto& level : asks) {
+                if (!level.is_array() || level.size() < 2 ||
+                    !append_update(config_, Side::Ask,
+                                   level.at(0).get_ref<const std::string&>(),
+                                   level.at(1).get_ref<const std::string&>(),
+                                   envelope->local_receipt_timestamp_ns,
+                                   envelope->local_receipt_timestamp_ns, output)) {
+                    output.clear();
+                    return AdapterStatus::Malformed;
+                }
+            }
+            source_sequence_ = payload->at("lastUpdateId").get<std::uint64_t>();
+            assign_sequences(SequenceStatus::Accepted, normalized_sequence_, output);
+            return AdapterStatus::Accepted;
+        }
         if (payload->value("e", "") != "depthUpdate") {
             return AdapterStatus::Unsupported;
         }

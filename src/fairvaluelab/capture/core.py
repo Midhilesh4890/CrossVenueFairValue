@@ -1,6 +1,7 @@
 import asyncio
 import json
 import time
+import urllib.request
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ class WebSocketLike(Protocol):
 
 
 ConnectionFactory = Callable[[str], AbstractAsyncContextManager[WebSocketLike]]
+SnapshotFetcher = Callable[[str], str]
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,23 @@ class Subscription:
     venue: str
     uri: str
     messages: tuple[str, ...]
+    snapshot_uri: str | None = None
+
+
+@dataclass(frozen=True)
+class ReceivedMessage:
+    raw_payload: str
+    local_receipt_timestamp_ns: int
+
+
+@dataclass(frozen=True)
+class CaptureValidationSummary:
+    total_records: int
+    records_by_kind: dict[str, int]
+    receipt_timestamp_span_ns: int | None
+    silent_gap_count: int
+    max_silent_gap_ns: int | None
+    silence_threshold_ns: int
 
 
 class AnchoredClock:
@@ -48,12 +67,13 @@ class AnchoredClock:
         return self.wall_anchor_ns + self.performance_clock() - self.performance_anchor_ns
 
 
-def frame_record(raw_payload: str, local_receipt_timestamp_ns: int) -> str:
+def frame_record(raw_payload: str, local_receipt_timestamp_ns: int, record_kind: str) -> str:
     return (
         json.dumps(
             {
                 "local_receipt_timestamp_ns": local_receipt_timestamp_ns,
                 "raw_payload": raw_payload,
+                "record_kind": record_kind,
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -139,9 +159,11 @@ def subscription_for(venue: str, symbol: str) -> Subscription:
     if venue_name == "binance":
         binance_quote = "USDT" if quote == "USD" else quote
         stream_symbol = f"{base}{binance_quote}".lower()
+        rest_symbol = f"{base}{binance_quote}".upper()
         streams = f"{stream_symbol}@depth@100ms/{stream_symbol}@trade"
         uri = f"wss://stream.binance.com:9443/stream?streams={streams}"
-        return Subscription(venue_name, uri, ())
+        snapshot_uri = f"https://api.binance.com/api/v3/depth?symbol={rest_symbol}&limit=5000"
+        return Subscription(venue_name, uri, (), snapshot_uri)
     if venue_name == "coinbase":
         coinbase_quote = "USD" if quote == "USDT" else quote
         product = f"{base}-{coinbase_quote}"
@@ -172,34 +194,266 @@ def open_connection(uri: str) -> AbstractAsyncContextManager[WebSocketLike]:
     return cast(AbstractAsyncContextManager[WebSocketLike], connect(uri, max_size=16 * 1024 * 1024))
 
 
+def fetch_text(uri: str) -> str:
+    with urllib.request.urlopen(uri, timeout=10.0) as response:
+        body = response.read()
+    if not isinstance(body, bytes):
+        raise TypeError("expected bytes response body")
+    return body.decode("utf-8")
+
+
+def _decode_raw_payload(raw_payload: str | bytes) -> str:
+    if isinstance(raw_payload, bytes):
+        return raw_payload.decode("utf-8")
+    return raw_payload
+
+
+def _json_payload(raw_payload: str) -> object:
+    payload = json.loads(raw_payload)
+    if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+        return payload["data"]
+    return payload
+
+
+def classify_record_kind(venue: str, raw_payload: str) -> str:
+    try:
+        payload = _json_payload(raw_payload)
+    except json.JSONDecodeError:
+        return "other"
+    if not isinstance(payload, dict):
+        return "other"
+    venue_name = venue.lower()
+    if venue_name == "binance":
+        event_type = payload.get("e")
+        if event_type == "depthUpdate":
+            return "depth_diff"
+        if event_type == "trade":
+            return "trade"
+        if "lastUpdateId" in payload and "bids" in payload and "asks" in payload:
+            return "snapshot"
+    if venue_name == "coinbase":
+        channel = payload.get("channel")
+        if channel == "l2_data":
+            return "depth_diff"
+        if channel == "market_trades":
+            return "trade"
+    if venue_name == "okx":
+        arg = payload.get("arg")
+        channel = arg.get("channel") if isinstance(arg, dict) else None
+        if channel == "books":
+            return "depth_diff"
+        if channel == "trades":
+            return "trade"
+    return "other"
+
+
+def _binance_update_id(payload: object, key: str) -> int | None:
+    if isinstance(payload, dict):
+        value = payload.get(key)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _binance_last_update_id(raw_payload: str) -> int:
+    payload = _json_payload(raw_payload)
+    if isinstance(payload, dict):
+        value = payload.get("lastUpdateId")
+        if isinstance(value, int):
+            return value
+    raise ValueError("Binance snapshot missing lastUpdateId")
+
+
+def _binance_depth_range(raw_payload: str) -> tuple[int, int] | None:
+    try:
+        payload = _json_payload(raw_payload)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict) or payload.get("e") != "depthUpdate":
+        return None
+    first_update = _binance_update_id(payload, "U")
+    final_update = _binance_update_id(payload, "u")
+    if first_update is None or final_update is None:
+        return None
+    return first_update, final_update
+
+
+def _submit_received(writer: BufferedNdjsonWriter, venue: str, message: ReceivedMessage) -> None:
+    writer.submit(
+        frame_record(
+            message.raw_payload,
+            message.local_receipt_timestamp_ns,
+            classify_record_kind(venue, message.raw_payload),
+        )
+    )
+
+
+async def _receive_message(websocket: WebSocketLike, clock: AnchoredClock) -> ReceivedMessage:
+    raw_payload = await websocket.recv()
+    return ReceivedMessage(_decode_raw_payload(raw_payload), clock.now_ns())
+
+
+async def _capture_binance_snapshot(
+    subscription: Subscription,
+    websocket: WebSocketLike,
+    writer: BufferedNdjsonWriter,
+    clock: AnchoredClock,
+    deadline: float,
+    snapshot_fetcher: SnapshotFetcher,
+) -> None:
+    if subscription.snapshot_uri is None:
+        return
+    loop = asyncio.get_running_loop()
+    buffered: list[ReceivedMessage] = []
+    while True:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return
+        snapshot_task = asyncio.create_task(
+            asyncio.to_thread(snapshot_fetcher, subscription.snapshot_uri)
+        )
+        receive_task = asyncio.create_task(_receive_message(websocket, clock))
+        try:
+            while not snapshot_task.done():
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    snapshot_task.cancel()
+                    receive_task.cancel()
+                    return
+                done, pending = await asyncio.wait(
+                    {snapshot_task, receive_task},
+                    timeout=remaining,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if not done:
+                    snapshot_task.cancel()
+                    receive_task.cancel()
+                    return
+                if receive_task in done:
+                    buffered.append(receive_task.result())
+                    receive_task = asyncio.create_task(_receive_message(websocket, clock))
+                if snapshot_task in done:
+                    break
+            snapshot_payload = snapshot_task.result()
+        finally:
+            if not receive_task.done():
+                receive_task.cancel()
+        snapshot_id = _binance_last_update_id(snapshot_payload)
+        depth_messages = [
+            message
+            for message in buffered
+            if (depth_range := _binance_depth_range(message.raw_payload)) is not None
+            and depth_range[1] > snapshot_id
+        ]
+        if depth_messages:
+            first_depth = _binance_depth_range(depth_messages[0].raw_payload)
+            if first_depth is not None and not (
+                first_depth[0] <= snapshot_id + 1 <= first_depth[1]
+            ):
+                continue
+        writer.submit(frame_record(snapshot_payload, clock.now_ns(), "snapshot"))
+        for message in buffered:
+            depth_range = _binance_depth_range(message.raw_payload)
+            if depth_range is not None and depth_range[1] <= snapshot_id:
+                continue
+            _submit_received(writer, subscription.venue, message)
+        return
+
+
+async def _capture_connected(
+    subscription: Subscription,
+    websocket: WebSocketLike,
+    writer: BufferedNdjsonWriter,
+    clock: AnchoredClock,
+    deadline: float,
+    snapshot_fetcher: SnapshotFetcher,
+) -> None:
+    for subscription_message in subscription.messages:
+        await websocket.send(subscription_message)
+    if subscription.venue == "binance":
+        await _capture_binance_snapshot(
+            subscription, websocket, writer, clock, deadline, snapshot_fetcher
+        )
+    loop = asyncio.get_running_loop()
+    while True:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return
+        try:
+            received = await asyncio.wait_for(_receive_message(websocket, clock), remaining)
+        except TimeoutError:
+            return
+        _submit_received(writer, subscription.venue, received)
+
+
 async def capture_subscription(
     subscription: Subscription,
     writer: BufferedNdjsonWriter,
     clock: AnchoredClock,
     duration_seconds: float,
     connection_factory: ConnectionFactory = open_connection,
+    snapshot_fetcher: SnapshotFetcher = fetch_text,
+    reconnect_initial_delay_seconds: float = 0.25,
+    reconnect_max_delay_seconds: float = 5.0,
 ) -> None:
     if duration_seconds <= 0:
         raise ValueError("duration must be positive")
+    if reconnect_initial_delay_seconds <= 0 or reconnect_max_delay_seconds <= 0:
+        raise ValueError("reconnect delays must be positive")
     loop = asyncio.get_running_loop()
     deadline = loop.time() + duration_seconds
-    async with connection_factory(subscription.uri) as websocket:
-        for message in subscription.messages:
-            await websocket.send(message)
-        while True:
-            remaining = deadline - loop.time()
-            if remaining <= 0:
+    backoff = reconnect_initial_delay_seconds
+    attempted = False
+    while loop.time() < deadline:
+        if attempted:
+            writer.submit(frame_record("{}", clock.now_ns(), "reconnect"))
+            await asyncio.sleep(min(backoff, max(0.0, deadline - loop.time())))
+            backoff = min(reconnect_max_delay_seconds, backoff * 2.0)
+        attempted = True
+        try:
+            async with connection_factory(subscription.uri) as websocket:
+                await _capture_connected(
+                    subscription, websocket, writer, clock, deadline, snapshot_fetcher
+                )
                 return
-            try:
-                raw_payload = await asyncio.wait_for(websocket.recv(), remaining)
-            except TimeoutError:
-                return
-            except EOFError:
-                return
-            receipt_timestamp = clock.now_ns()
-            if isinstance(raw_payload, bytes):
-                raw_payload = raw_payload.decode("utf-8")
-            writer.submit(frame_record(raw_payload, receipt_timestamp))
+        except (ConnectionError, EOFError, OSError, TimeoutError):
+            continue
+
+
+def summarize_capture(
+    paths: dict[str, Path],
+    silence_threshold_seconds: float,
+) -> dict[str, CaptureValidationSummary]:
+    if silence_threshold_seconds <= 0:
+        raise ValueError("silence threshold must be positive")
+    silence_threshold_ns = int(silence_threshold_seconds * 1_000_000_000)
+    summaries: dict[str, CaptureValidationSummary] = {}
+    for venue, path in paths.items():
+        records_by_kind: dict[str, int] = {}
+        timestamps: list[int] = []
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if not line:
+                    continue
+                record = json.loads(line)
+                kind = record.get("record_kind", "unknown")
+                records_by_kind[str(kind)] = records_by_kind.get(str(kind), 0) + 1
+                timestamp = record.get("local_receipt_timestamp_ns")
+                if isinstance(timestamp, int):
+                    timestamps.append(timestamp)
+        timestamps.sort()
+        gaps = [right - left for left, right in zip(timestamps, timestamps[1:], strict=False)]
+        silent_gaps = [gap for gap in gaps if gap > silence_threshold_ns]
+        span = timestamps[-1] - timestamps[0] if timestamps else None
+        summaries[venue] = CaptureValidationSummary(
+            total_records=sum(records_by_kind.values()),
+            records_by_kind=records_by_kind,
+            receipt_timestamp_span_ns=span,
+            silent_gap_count=len(silent_gaps),
+            max_silent_gap_ns=max(silent_gaps) if silent_gaps else None,
+            silence_threshold_ns=silence_threshold_ns,
+        )
+    return summaries
 
 
 async def run_capture(
