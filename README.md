@@ -70,3 +70,13 @@ timestamps, and sequence numbers use unsigned 64-bit integers. Each side retains
 number of levels in a fixed `std::array`; a full book discards an out-of-range price or evicts its
 current worst level. A gap never mutates the book or advances its sequence, leaving recovery policy
 to the future venue adapter.
+
+## Feature emitter allocation behavior
+
+The feature emitter stores previous book levels in fixed-capacity arrays and copies only the
+configured multi-level depth (bounded by book capacity). Book snapshots require no heap allocation.
+For an existing venue, duplicate, stale, and sequence-gap updates require no allocation or
+deallocation when no clock sample is due. Accepted updates and clock samples still allocate for
+returned feature vectors and rolling history; the full emitter is not allocation-free.
+The C++ suite checks rejected-update allocations and snapshot behavior at different configured depths,
+rejected updates, deletion, and refilling an empty side.

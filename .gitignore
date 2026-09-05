@@ -20,3 +20,6 @@ Testing/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Local market captures
+data/capture/

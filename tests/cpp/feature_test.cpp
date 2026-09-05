@@ -185,6 +185,37 @@ bool test_trade_csv() {
     return true;
 }
 
+bool test_snapshot_depth_and_rejected_updates() {
+    for (const auto depth : {std::size_t{1}, std::size_t{3},
+                             fairvaluelab::BookSide::maximum_depth + 1}) {
+        FeatureEmitter emitter{FeatureEmitterConfig{
+            .clock_interval_ns = 10'000,
+            .event_window = 1,
+            .time_window_ns = 10'000,
+            .multi_level_depth = depth,
+        }};
+        static_cast<void>(emitter.process(update(1, Side::Bid, 100, 10, 100)));
+        static_cast<void>(emitter.process(update(2, Side::Bid, 99, 20, 110)));
+        static_cast<void>(emitter.process(update(3, Side::Ask, 102, 10, 120)));
+        FVL_CHECK(emitter.process(update(3, Side::Bid, 100, 999, 130)).empty());
+        FVL_CHECK(emitter.process(update(2, Side::Ask, 102, 999, 140)).empty());
+        FVL_CHECK(emitter.process(update(5, Side::Bid, 101, 999, 150)).empty());
+        const auto deletion = emitter.process(update(4, Side::Bid, 100, 0, 160)).back();
+        FVL_CHECK(deletion.ofi_event_window == -10.0);
+        FVL_CHECK(deletion.multi_level_ofi_event_window == (depth == 1 ? 10.0 : -10.0));
+        const auto empty = emitter.process(update(5, Side::Bid, 99, 0, 170)).back();
+        FVL_CHECK(empty.ofi_event_window == -20.0);
+        FVL_CHECK(empty.multi_level_ofi_event_window == -20.0);
+        const auto refill = emitter.process(update(6, Side::Bid, 98, 7, 180)).back();
+        FVL_CHECK(refill.ofi_event_window == 7.0);
+        FVL_CHECK(refill.multi_level_ofi_event_window == 7.0);
+        const auto ask = emitter.process(update(7, Side::Ask, 102, 0, 190)).back();
+        FVL_CHECK(ask.ofi_event_window == 10.0);
+        FVL_CHECK(ask.multi_level_ofi_event_window == 10.0);
+    }
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -199,6 +230,7 @@ int main() {
         TestCase{"ofi sign convention", test_ofi_sign_convention},
         TestCase{"trade windows", test_trade_windows},
         TestCase{"trade csv", test_trade_csv},
+        TestCase{"snapshot depth and rejected updates", test_snapshot_depth_and_rejected_updates},
     };
 
     std::size_t passed = 0;

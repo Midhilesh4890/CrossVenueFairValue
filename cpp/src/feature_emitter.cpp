@@ -74,40 +74,40 @@ std::optional<double> book_slope(const std::span<const PriceLevel> bids,
     return static_cast<double>((samples * sum_xy - sum_x * sum_y) / denominator);
 }
 
-long double bid_flow(const std::optional<PriceLevel> previous,
-                     const std::optional<PriceLevel> current) {
-    if (!previous.has_value()) {
-        return current.has_value() ? static_cast<long double>(current->quantity) : 0.0L;
+long double bid_flow(const std::span<const PriceLevel> previous,
+                     const std::span<const PriceLevel> current) {
+    if (previous.empty()) {
+        return current.empty() ? 0.0L : static_cast<long double>(current.front().quantity);
     }
-    if (!current.has_value()) {
-        return -static_cast<long double>(previous->quantity);
+    if (current.empty()) {
+        return -static_cast<long double>(previous.front().quantity);
     }
-    if (current->price_ticks > previous->price_ticks) {
-        return static_cast<long double>(current->quantity);
+    if (current.front().price_ticks > previous.front().price_ticks) {
+        return static_cast<long double>(current.front().quantity);
     }
-    if (current->price_ticks < previous->price_ticks) {
-        return -static_cast<long double>(previous->quantity);
+    if (current.front().price_ticks < previous.front().price_ticks) {
+        return -static_cast<long double>(previous.front().quantity);
     }
-    return static_cast<long double>(current->quantity) -
-           static_cast<long double>(previous->quantity);
+    return static_cast<long double>(current.front().quantity) -
+           static_cast<long double>(previous.front().quantity);
 }
 
-long double ask_flow(const std::optional<PriceLevel> previous,
-                     const std::optional<PriceLevel> current) {
-    if (!previous.has_value()) {
-        return current.has_value() ? -static_cast<long double>(current->quantity) : 0.0L;
+long double ask_flow(const std::span<const PriceLevel> previous,
+                     const std::span<const PriceLevel> current) {
+    if (previous.empty()) {
+        return current.empty() ? 0.0L : -static_cast<long double>(current.front().quantity);
     }
-    if (!current.has_value()) {
-        return static_cast<long double>(previous->quantity);
+    if (current.empty()) {
+        return static_cast<long double>(previous.front().quantity);
     }
-    if (current->price_ticks < previous->price_ticks) {
-        return -static_cast<long double>(current->quantity);
+    if (current.front().price_ticks < previous.front().price_ticks) {
+        return -static_cast<long double>(current.front().quantity);
     }
-    if (current->price_ticks > previous->price_ticks) {
-        return static_cast<long double>(previous->quantity);
+    if (current.front().price_ticks > previous.front().price_ticks) {
+        return static_cast<long double>(previous.front().quantity);
     }
-    return static_cast<long double>(previous->quantity) -
-           static_cast<long double>(current->quantity);
+    return static_cast<long double>(previous.front().quantity) -
+           static_cast<long double>(current.front().quantity);
 }
 
 std::optional<Quantity> quantity_at(const std::span<const PriceLevel> levels,
@@ -150,6 +150,13 @@ double multi_level_flow(const std::span<const PriceLevel> previous_bids,
                         const std::size_t depth) {
     return static_cast<double>(weighted_side_flow(previous_bids, current_bids, depth, 1.0L) +
                                weighted_side_flow(previous_asks, current_asks, depth, -1.0L));
+}
+
+void snapshot(std::array<PriceLevel, fairvaluelab::BookSide::maximum_depth>& destination,
+              std::size_t& count, const std::span<const PriceLevel> levels,
+              const std::size_t depth) {
+    count = std::min({depth, levels.size(), destination.size()});
+    std::copy_n(levels.begin(), count, destination.begin());
 }
 
 template <typename Value>
@@ -346,21 +353,20 @@ fairvaluelab::FeatureEmitter::process(const BookUpdate& update) {
     auto output = advance(update.local_receipt_timestamp_ns);
     auto [state, inserted] = states_.try_emplace(update.venue_id);
     static_cast<void>(inserted);
-    const std::vector<PriceLevel> previous_bids{state->second.book.bids().begin(),
-                                                state->second.book.bids().end()};
-    const std::vector<PriceLevel> previous_asks{state->second.book.asks().begin(),
-                                                state->second.book.asks().end()};
-    if (state->second.book.apply(update).accepted()) {
-        const auto value = static_cast<double>(
-            bid_flow(previous_bids.empty() ? std::nullopt
-                                           : std::optional{previous_bids.front()},
-                     state->second.book.best_bid()) +
-            ask_flow(previous_asks.empty() ? std::nullopt
-                                           : std::optional{previous_asks.front()},
-                     state->second.book.best_ask()));
-        const auto multi_value =
-            multi_level_flow(previous_bids, previous_asks, state->second.book.bids(),
-                             state->second.book.asks(), config_.multi_level_depth);
+    auto& venue_state = state->second;
+    const std::span previous_bids{venue_state.previous_bids.data(), venue_state.previous_bid_count};
+    const std::span previous_asks{venue_state.previous_asks.data(), venue_state.previous_ask_count};
+    if (venue_state.book.apply(update).accepted()) {
+        const auto current_bids = venue_state.book.bids();
+        const auto current_asks = venue_state.book.asks();
+        const auto value = static_cast<double>(bid_flow(previous_bids, current_bids) +
+                                               ask_flow(previous_asks, current_asks));
+        const auto multi_value = multi_level_flow(previous_bids, previous_asks, current_bids,
+                                                   current_asks, config_.multi_level_depth);
+        snapshot(venue_state.previous_bids, venue_state.previous_bid_count, current_bids,
+                 config_.multi_level_depth);
+        snapshot(venue_state.previous_asks, venue_state.previous_ask_count, current_asks,
+                 config_.multi_level_depth);
         state->second.order_flow.push_back(
             VenueState::OrderFlow{update.local_receipt_timestamp_ns, value, multi_value});
         state->second.exchange_timestamp_ns = update.exchange_timestamp_ns;

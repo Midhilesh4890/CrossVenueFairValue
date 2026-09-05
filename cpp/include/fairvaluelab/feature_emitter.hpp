@@ -3,6 +3,7 @@
 #include "fairvaluelab/market_event.hpp"
 #include "fairvaluelab/order_book.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -82,6 +83,10 @@ class FeatureEmitter {
         };
 
         OrderBook book;
+        std::array<PriceLevel, BookSide::maximum_depth> previous_bids{};
+        std::array<PriceLevel, BookSide::maximum_depth> previous_asks{};
+        std::size_t previous_bid_count{};
+        std::size_t previous_ask_count{};
         bool initialized{};
         TimestampNs exchange_timestamp_ns{};
         TimestampNs local_receipt_timestamp_ns{};
