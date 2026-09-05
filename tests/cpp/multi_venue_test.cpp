@@ -26,6 +26,8 @@ using fairvaluelab::CoinbaseAdapter;
 using fairvaluelab::OkxAdapter;
 using fairvaluelab::Rational;
 using fairvaluelab::Side;
+using fairvaluelab::Trade;
+using fairvaluelab::TradeSide;
 using fairvaluelab::VenueConfig;
 
 #define FVL_CHECK(condition)                                                                       \
@@ -87,6 +89,28 @@ bool test_concrete_adapters() {
     FVL_CHECK(okx.normalize(
                   R"({"local_receipt_timestamp_ns":1,"raw_payload":"{\"event\":\"subscribe\",\"arg\":{\"channel\":\"books\"}}"})",
                   updates) == AdapterStatus::Unsupported);
+
+    std::vector<Trade> trades;
+    const std::string binance_trade =
+        R"({"local_receipt_timestamp_ns":1704067200000000400,"raw_payload":"{\"stream\":\"btcusdt@trade\",\"data\":{\"e\":\"trade\",\"T\":1704067200000,\"t\":21,\"p\":\"50000.25\",\"q\":\"0.50000000\",\"m\":false}}"})";
+    FVL_CHECK(binance.normalize_trades(binance_trade, trades) == AdapterStatus::Accepted);
+    FVL_CHECK(trades.size() == 1);
+    FVL_CHECK(trades.front().side == TradeSide::Buy);
+    FVL_CHECK(trades.front().quantity == 50'000'000);
+
+    const std::string coinbase_trade =
+        R"({"local_receipt_timestamp_ns":1704067200000000500,"raw_payload":"{\"channel\":\"market_trades\",\"events\":[{\"trades\":[{\"trade_id\":\"22\",\"price\":\"50001.25\",\"size\":\"0.25000000\",\"time\":\"2024-01-01T00:00:00.000000001Z\",\"side\":\"SELL\"}]}]}"})";
+    FVL_CHECK(coinbase.normalize_trades(coinbase_trade, trades) == AdapterStatus::Accepted);
+    FVL_CHECK(trades.size() == 1);
+    FVL_CHECK(trades.front().side == TradeSide::Sell);
+    FVL_CHECK(trades.front().sequence_number == 22);
+
+    const std::string okx_trade =
+        R"({"local_receipt_timestamp_ns":1704067200000000600,"raw_payload":"{\"arg\":{\"channel\":\"trades\"},\"data\":[{\"tradeId\":\"23\",\"px\":\"50001.2\",\"sz\":\"0.75000000\",\"side\":\"buy\",\"ts\":\"1704067200000\"}]}"})";
+    FVL_CHECK(okx.normalize_trades(okx_trade, trades) == AdapterStatus::Accepted);
+    FVL_CHECK(trades.size() == 1);
+    FVL_CHECK(trades.front().side == TradeSide::Buy);
+    FVL_CHECK(trades.front().price_ticks == 500'012);
     return true;
 }
 
@@ -112,7 +136,7 @@ bool test_fixture_conversion_and_replay() {
     while (std::getline(sorted, line)) {
         std::istringstream row{line};
         std::string field;
-        for (std::size_t column = 0; column < 4; ++column) {
+        for (std::size_t column = 0; column < 5; ++column) {
             FVL_CHECK(static_cast<bool>(std::getline(row, field, ',')));
         }
         const auto timestamp = std::stoull(field);

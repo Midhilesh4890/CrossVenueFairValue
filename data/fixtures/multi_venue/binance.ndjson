@@ -751,5 +751,5 @@
 {"local_receipt_timestamp_ns":1704067200000007511,"raw_payload":"{\"stream\":\"btcusdt@depth@100ms\",\"data\":{\"e\":\"depthUpdate\",\"E\":1704067200751,\"U\":750,\"u\":750,\"b\":[],\"a\":[[\"50001.00\",\"1.00000000\"]]}}"}
 {"local_receipt_timestamp_ns":1704067200000007521,"raw_payload":"{\"stream\":\"btcusdt@depth@100ms\",\"data\":{\"e\":\"depthUpdate\",\"E\":1704067200752,\"U\":751,\"u\":751,\"b\":[[\"50000.00\",\"1.00000000\"]],\"a\":[]}}"}
 {"local_receipt_timestamp_ns":1704067200000007531,"raw_payload":"{\"stream\":\"btcusdt@depth@100ms\",\"data\":{\"e\":\"depthUpdate\",\"E\":1704067200753,\"U\":752,\"u\":752,\"b\":[],\"a\":[[\"50001.00\",\"1.00000000\"]]}}"}
-{"local_receipt_timestamp_ns":1704067200000007541,"raw_payload":"{\"stream\":\"btcusdt@trade\",\"data\":{\"e\":\"trade\"}}"}
+{"local_receipt_timestamp_ns":1704067200000007541,"raw_payload":"{\"result\":null,\"id\":1}"}
 {"local_receipt_timestamp_ns":1704067200000007551,"raw_payload":"{"}

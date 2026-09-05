@@ -2,6 +2,7 @@
 #include "fairvaluelab/order_book.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -10,9 +11,12 @@
 
 using fairvaluelab::BookUpdate;
 using fairvaluelab::FeatureEmitter;
+using fairvaluelab::FeatureEmitterConfig;
 using fairvaluelab::OrderBook;
 using fairvaluelab::SampleKind;
 using fairvaluelab::Side;
+using fairvaluelab::Trade;
+using fairvaluelab::TradeSide;
 
 #define FVL_CHECK(condition)                                                                       \
     do {                                                                                           \
@@ -25,6 +29,10 @@ using fairvaluelab::Side;
 BookUpdate update(const std::uint64_t sequence, const Side side, const std::int64_t price,
                   const std::uint64_t quantity, const std::uint64_t timestamp) {
     return BookUpdate{7, side, price, quantity, timestamp - 10, timestamp, sequence};
+}
+
+bool approximately_equal(const double lhs, const double rhs) {
+    return std::abs(lhs - rhs) < 1e-12;
 }
 
 bool test_empty_side_imbalance() {
@@ -88,6 +96,95 @@ bool test_feature_csv() {
     return true;
 }
 
+double latest_ofi(FeatureEmitter& emitter, const BookUpdate& book_update) {
+    return emitter.process(book_update).back().ofi_event_window;
+}
+
+FeatureEmitter flow_emitter() {
+    return FeatureEmitter{FeatureEmitterConfig{
+        .clock_interval_ns = 1'000,
+        .event_window = 1,
+        .time_window_ns = 10'000,
+        .multi_level_depth = 3,
+    }};
+}
+
+bool test_ofi_sign_convention() {
+    auto bid_growth = flow_emitter();
+    static_cast<void>(bid_growth.process(update(1, Side::Bid, 100, 10, 100)));
+    static_cast<void>(bid_growth.process(update(2, Side::Ask, 102, 10, 200)));
+    FVL_CHECK(latest_ofi(bid_growth, update(3, Side::Bid, 100, 15, 300)) == 5.0);
+
+    auto ask_growth = flow_emitter();
+    static_cast<void>(ask_growth.process(update(1, Side::Bid, 100, 10, 100)));
+    static_cast<void>(ask_growth.process(update(2, Side::Ask, 102, 10, 200)));
+    FVL_CHECK(latest_ofi(ask_growth, update(3, Side::Ask, 102, 15, 300)) == -5.0);
+
+    auto bid_improvement = flow_emitter();
+    static_cast<void>(bid_improvement.process(update(1, Side::Bid, 100, 10, 100)));
+    static_cast<void>(bid_improvement.process(update(2, Side::Ask, 102, 10, 200)));
+    FVL_CHECK(latest_ofi(bid_improvement, update(3, Side::Bid, 101, 7, 300)) == 7.0);
+
+    auto ask_improvement = flow_emitter();
+    static_cast<void>(ask_improvement.process(update(1, Side::Bid, 100, 10, 100)));
+    static_cast<void>(ask_improvement.process(update(2, Side::Ask, 102, 10, 200)));
+    FVL_CHECK(latest_ofi(ask_improvement, update(3, Side::Ask, 101, 7, 300)) == -7.0);
+
+    auto bid_deletion = flow_emitter();
+    static_cast<void>(bid_deletion.process(update(1, Side::Bid, 100, 10, 100)));
+    static_cast<void>(bid_deletion.process(update(2, Side::Ask, 102, 10, 200)));
+    FVL_CHECK(latest_ofi(bid_deletion, update(3, Side::Bid, 100, 0, 300)) == -10.0);
+
+    auto ask_deletion = flow_emitter();
+    static_cast<void>(ask_deletion.process(update(1, Side::Bid, 100, 10, 100)));
+    static_cast<void>(ask_deletion.process(update(2, Side::Ask, 102, 10, 200)));
+    FVL_CHECK(latest_ofi(ask_deletion, update(3, Side::Ask, 102, 0, 300)) == 10.0);
+    return true;
+}
+
+bool test_trade_windows() {
+    FeatureEmitter emitter{FeatureEmitterConfig{
+        .clock_interval_ns = 1'000,
+        .event_window = 2,
+        .time_window_ns = 150,
+        .multi_level_depth = 3,
+    }};
+    static_cast<void>(emitter.process(update(1, Side::Bid, 100, 10, 100)));
+    static_cast<void>(emitter.process(update(2, Side::Ask, 102, 10, 200)));
+    const Trade buy{7, TradeSide::Buy, 103, 4, 290, 300, 1};
+    const Trade sell{7, TradeSide::Sell, 99, 2, 490, 500, 2};
+    static_cast<void>(emitter.process(buy));
+    const auto features = emitter.process(sell).back();
+    FVL_CHECK(features.signed_trade_volume_event_window == 2.0);
+    FVL_CHECK(features.signed_trade_volume_time_window == -2.0);
+    FVL_CHECK(features.trade_count_event_window == 2);
+    FVL_CHECK(features.trade_count_time_window == 1);
+    FVL_CHECK(features.trade_vwap_deviation_event_window.has_value());
+    FVL_CHECK(approximately_equal(*features.trade_vwap_deviation_event_window, 2.0 / 3.0));
+    FVL_CHECK(features.trade_vwap_deviation_time_window == -2.0);
+    return true;
+}
+
+bool test_trade_csv() {
+    std::istringstream input{
+        "event_type,sequence_number,venue_id,exchange_timestamp_ns,"
+        "local_receipt_timestamp_ns,side,price_ticks,quantity\n"
+        "book,1,7,90,100,B,100,10\n"
+        "book,2,7,190,200,A,102,10\n"
+        "trade,3,7,240,250,B,103,4\n"};
+    std::ostringstream output;
+    const auto rows = fairvaluelab::write_feature_csv(
+        input, output,
+        FeatureEmitterConfig{.clock_interval_ns = 1'000,
+                             .event_window = 10,
+                             .time_window_ns = 1'000,
+                             .multi_level_depth = 3});
+    FVL_CHECK(rows == 3);
+    FVL_CHECK(output.str().find("event,7,240,250,250,2,101") != std::string::npos);
+    FVL_CHECK(output.str().find(",4,4,1,1,2,2\n") != std::string::npos);
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -99,6 +196,9 @@ int main() {
         TestCase{"slope with fewer levels", test_slope_with_fewer_levels},
         TestCase{"clock sampling without updates", test_clock_sampling_without_updates},
         TestCase{"feature csv", test_feature_csv},
+        TestCase{"ofi sign convention", test_ofi_sign_convention},
+        TestCase{"trade windows", test_trade_windows},
+        TestCase{"trade csv", test_trade_csv},
     };
 
     std::size_t passed = 0;

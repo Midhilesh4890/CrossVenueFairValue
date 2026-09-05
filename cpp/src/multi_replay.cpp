@@ -11,13 +11,14 @@
 #include <ostream>
 #include <stdexcept>
 #include <string>
+#include <variant>
 
 namespace {
 
+using fairvaluelab::BookUpdate;
 using fairvaluelab::OrderBook;
 using fairvaluelab::PriceLevel;
 using fairvaluelab::ReplayReport;
-using fairvaluelab::Side;
 using fairvaluelab::UpdateStatus;
 using fairvaluelab::VenueId;
 
@@ -66,26 +67,29 @@ fairvaluelab::ReplayReport fairvaluelab::replay_normalized_log(std::istream& inp
         }
         ++event_count;
         try {
-            const auto event = parse_normalized_event(line);
-            auto& stats = report[event.venue_id];
-            auto [book, inserted] = books.try_emplace(event.venue_id);
-            static_cast<void>(inserted);
-            switch (book->second.apply(event).status) {
-            case UpdateStatus::Accepted:
-                ++stats.accepted;
-                break;
-            case UpdateStatus::Duplicate:
-                ++stats.duplicate;
-                break;
-            case UpdateStatus::Stale:
-                ++stats.stale;
-                break;
-            case UpdateStatus::SequenceGap:
-                ++stats.gapped;
-                break;
-            case UpdateStatus::InvalidSide:
-                ++stats.malformed;
-                break;
+            const auto normalized_event = parse_normalized_event(line);
+            if (std::holds_alternative<BookUpdate>(normalized_event)) {
+                const auto& event = std::get<BookUpdate>(normalized_event);
+                auto& stats = report[event.venue_id];
+                auto [book, inserted] = books.try_emplace(event.venue_id);
+                static_cast<void>(inserted);
+                switch (book->second.apply(event).status) {
+                case UpdateStatus::Accepted:
+                    ++stats.accepted;
+                    break;
+                case UpdateStatus::Duplicate:
+                    ++stats.duplicate;
+                    break;
+                case UpdateStatus::Stale:
+                    ++stats.stale;
+                    break;
+                case UpdateStatus::SequenceGap:
+                    ++stats.gapped;
+                    break;
+                case UpdateStatus::InvalidSide:
+                    ++stats.malformed;
+                    break;
+                }
             }
         } catch (const std::exception&) {
             const auto venue_id = find_normalized_venue_id(line);

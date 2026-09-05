@@ -15,6 +15,8 @@ class BinanceAdapter final : public VenueAdapter {
     explicit BinanceAdapter(VenueConfig config);
     [[nodiscard]] AdapterStatus normalize(std::string_view raw_record,
                                           std::vector<BookUpdate>& output) const override;
+    [[nodiscard]] AdapterStatus normalize_trades(std::string_view raw_record,
+                                                 std::vector<Trade>& output) const override;
 
   private:
     VenueConfig config_;
@@ -27,6 +29,8 @@ class CoinbaseAdapter final : public VenueAdapter {
     explicit CoinbaseAdapter(VenueConfig config);
     [[nodiscard]] AdapterStatus normalize(std::string_view raw_record,
                                           std::vector<BookUpdate>& output) const override;
+    [[nodiscard]] AdapterStatus normalize_trades(std::string_view raw_record,
+                                                 std::vector<Trade>& output) const override;
 
   private:
     VenueConfig config_;
@@ -40,6 +44,8 @@ class OkxAdapter final : public VenueAdapter {
     explicit OkxAdapter(VenueConfig config);
     [[nodiscard]] AdapterStatus normalize(std::string_view raw_record,
                                           std::vector<BookUpdate>& output) const override;
+    [[nodiscard]] AdapterStatus normalize_trades(std::string_view raw_record,
+                                                 std::vector<Trade>& output) const override;
 
   private:
     VenueConfig config_;

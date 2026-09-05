@@ -21,6 +21,8 @@ using fairvaluelab::Quantity;
 using fairvaluelab::Rational;
 using fairvaluelab::Side;
 using fairvaluelab::TimestampNs;
+using fairvaluelab::Trade;
+using fairvaluelab::TradeSide;
 using fairvaluelab::VenueConfig;
 using Json = nlohmann::json;
 
@@ -213,6 +215,23 @@ bool append_update(const VenueConfig& config, const Side side, const std::string
     return true;
 }
 
+bool append_trade(const VenueConfig& config, const TradeSide side, const std::string_view price,
+                  const std::string_view quantity, const TimestampNs exchange_timestamp_ns,
+                  const TimestampNs receipt_timestamp_ns, const std::uint64_t sequence_number,
+                  std::vector<Trade>& output) {
+    const auto rational_price = parse_decimal(price);
+    const auto price_ticks = rational_price.has_value()
+                                 ? fairvaluelab::price_to_ticks(*rational_price, config.tick_size)
+                                 : std::nullopt;
+    const auto scaled_quantity = parse_quantity(quantity, config.quantity_scale_factor);
+    if (!price_ticks.has_value() || !scaled_quantity.has_value()) {
+        return false;
+    }
+    output.push_back(Trade{config.venue_id, side, *price_ticks, *scaled_quantity,
+                           exchange_timestamp_ns, receipt_timestamp_ns, sequence_number});
+    return true;
+}
+
 std::uint64_t normalized_sequence(SequenceStatus status, std::uint64_t& next_sequence);
 
 void assign_sequences(const SequenceStatus status, std::uint64_t& next_sequence,
@@ -316,6 +335,38 @@ AdapterStatus fairvaluelab::BinanceAdapter::normalize(const std::string_view raw
     }
 }
 
+AdapterStatus fairvaluelab::BinanceAdapter::normalize_trades(
+    const std::string_view raw_record, std::vector<Trade>& output) const {
+    output.clear();
+    try {
+        const auto envelope = parse_envelope(raw_record);
+        if (!envelope.has_value()) {
+            return AdapterStatus::Malformed;
+        }
+        const Json* payload = &envelope->payload;
+        if (payload->contains("data")) {
+            payload = &payload->at("data");
+        }
+        if (payload->value("e", "") != "trade") {
+            return AdapterStatus::Unsupported;
+        }
+        const auto exchange_timestamp_ns = milliseconds_to_ns(payload->at("T"));
+        if (!exchange_timestamp_ns.has_value() ||
+            !append_trade(config_, payload->at("m").get<bool>() ? TradeSide::Sell : TradeSide::Buy,
+                          payload->at("p").get_ref<const std::string&>(),
+                          payload->at("q").get_ref<const std::string&>(),
+                          *exchange_timestamp_ns, envelope->local_receipt_timestamp_ns,
+                          payload->at("t").get<std::uint64_t>(), output)) {
+            output.clear();
+            return AdapterStatus::Malformed;
+        }
+        return AdapterStatus::Accepted;
+    } catch (const std::exception&) {
+        output.clear();
+        return AdapterStatus::Malformed;
+    }
+}
+
 fairvaluelab::CoinbaseAdapter::CoinbaseAdapter(VenueConfig config) : config_(std::move(config)) {}
 
 AdapterStatus fairvaluelab::CoinbaseAdapter::normalize(const std::string_view raw_record,
@@ -401,6 +452,56 @@ AdapterStatus fairvaluelab::CoinbaseAdapter::normalize(const std::string_view ra
     }
 }
 
+AdapterStatus fairvaluelab::CoinbaseAdapter::normalize_trades(
+    const std::string_view raw_record, std::vector<Trade>& output) const {
+    output.clear();
+    try {
+        const auto envelope = parse_envelope(raw_record);
+        if (!envelope.has_value()) {
+            return AdapterStatus::Malformed;
+        }
+        const auto& payload = envelope->payload;
+        if (payload.value("channel", "") != "market_trades") {
+            return AdapterStatus::Unsupported;
+        }
+        const auto& events = payload.at("events");
+        if (!events.is_array()) {
+            return AdapterStatus::Malformed;
+        }
+        for (const auto& event : events) {
+            const auto& trades = event.at("trades");
+            if (!trades.is_array()) {
+                output.clear();
+                return AdapterStatus::Malformed;
+            }
+            for (const auto& trade : trades) {
+                const auto side_value = trade.at("side").get_ref<const std::string&>();
+                const auto side = side_value == "BUY"    ? std::optional{TradeSide::Buy}
+                                  : side_value == "SELL" ? std::optional{TradeSide::Sell}
+                                                          : std::nullopt;
+                const auto exchange_timestamp_ns =
+                    iso_timestamp_to_ns(trade.at("time").get_ref<const std::string&>());
+                const auto sequence_number = parse_integer<std::uint64_t>(
+                    trade.at("trade_id").get_ref<const std::string&>());
+                if (!side.has_value() || !exchange_timestamp_ns.has_value() ||
+                    !sequence_number.has_value() ||
+                    !append_trade(config_, *side,
+                                  trade.at("price").get_ref<const std::string&>(),
+                                  trade.at("size").get_ref<const std::string&>(),
+                                  *exchange_timestamp_ns, envelope->local_receipt_timestamp_ns,
+                                  *sequence_number, output)) {
+                    output.clear();
+                    return AdapterStatus::Malformed;
+                }
+            }
+        }
+        return output.empty() ? AdapterStatus::Unsupported : AdapterStatus::Accepted;
+    } catch (const std::exception&) {
+        output.clear();
+        return AdapterStatus::Malformed;
+    }
+}
+
 fairvaluelab::OkxAdapter::OkxAdapter(VenueConfig config) : config_(std::move(config)) {}
 
 AdapterStatus fairvaluelab::OkxAdapter::normalize(const std::string_view raw_record,
@@ -477,6 +578,50 @@ AdapterStatus fairvaluelab::OkxAdapter::normalize(const std::string_view raw_rec
         }
         assign_sequences(sequence_status, normalized_sequence_, output);
         return AdapterStatus::Accepted;
+    } catch (const std::exception&) {
+        output.clear();
+        return AdapterStatus::Malformed;
+    }
+}
+
+AdapterStatus fairvaluelab::OkxAdapter::normalize_trades(const std::string_view raw_record,
+                                                        std::vector<Trade>& output) const {
+    output.clear();
+    try {
+        const auto envelope = parse_envelope(raw_record);
+        if (!envelope.has_value()) {
+            return AdapterStatus::Malformed;
+        }
+        const auto& payload = envelope->payload;
+        if (!payload.contains("arg") || payload.at("arg").value("channel", "") != "trades") {
+            return AdapterStatus::Unsupported;
+        }
+        if (!payload.contains("data")) {
+            return AdapterStatus::Unsupported;
+        }
+        const auto& trades = payload.at("data");
+        if (!trades.is_array()) {
+            return AdapterStatus::Malformed;
+        }
+        for (const auto& trade : trades) {
+            const auto side_value = trade.at("side").get_ref<const std::string&>();
+            const auto side = side_value == "buy"    ? std::optional{TradeSide::Buy}
+                              : side_value == "sell" ? std::optional{TradeSide::Sell}
+                                                     : std::nullopt;
+            const auto exchange_timestamp_ns = milliseconds_to_ns(trade.at("ts"));
+            const auto sequence_number = parse_integer<std::uint64_t>(
+                trade.at("tradeId").get_ref<const std::string&>());
+            if (!side.has_value() || !exchange_timestamp_ns.has_value() ||
+                !sequence_number.has_value() ||
+                !append_trade(config_, *side, trade.at("px").get_ref<const std::string&>(),
+                              trade.at("sz").get_ref<const std::string&>(),
+                              *exchange_timestamp_ns, envelope->local_receipt_timestamp_ns,
+                              *sequence_number, output)) {
+                output.clear();
+                return AdapterStatus::Malformed;
+            }
+        }
+        return output.empty() ? AdapterStatus::Unsupported : AdapterStatus::Accepted;
     } catch (const std::exception&) {
         output.clear();
         return AdapterStatus::Malformed;

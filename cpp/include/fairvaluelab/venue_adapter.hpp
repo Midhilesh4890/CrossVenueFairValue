@@ -20,6 +20,8 @@ class VenueAdapter {
 
     [[nodiscard]] virtual AdapterStatus normalize(std::string_view raw_record,
                                                   std::vector<BookUpdate>& output) const = 0;
+    [[nodiscard]] virtual AdapterStatus normalize_trades(std::string_view raw_record,
+                                                         std::vector<Trade>& output) const = 0;
 };
 
 }
