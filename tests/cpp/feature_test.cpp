@@ -1,6 +1,7 @@
 #include "fairvaluelab/feature_emitter.hpp"
 #include "fairvaluelab/order_book.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -8,6 +9,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 
 using fairvaluelab::BookUpdate;
@@ -218,20 +220,23 @@ bool test_band_sign_correctness() {
 }
 
 bool test_band_width_invariance() {
-    std::optional<double> first;
-    for (const auto band : {1, 2, 3, 5, 10}) {
-        auto emitter = band_emitter(band);
-        static_cast<void>(emitter.process(update(1, Side::Bid, 100, 10, 100)));
-        static_cast<void>(emitter.process(update(2, Side::Bid, 99, 20, 110)));
-        static_cast<void>(emitter.process(update(3, Side::Bid, 98, 30, 120)));
-        static_cast<void>(emitter.process(update(4, Side::Ask, 102, 10, 130)));
-        const auto result = emitter.process(update(5, Side::Bid, 100, 0, 140)).back();
-        FVL_CHECK(result.multi_level_ofi_event_window == -5.0);
-        FVL_CHECK(result.multi_level_ofi_time_window == -5.0);
-        if (!first.has_value()) {
-            first = result.multi_level_ofi_event_window;
+    for (const auto quantity : {0, 20}) {
+        std::optional<double> first;
+        for (const auto band : {1, 2, 3, 5, 10}) {
+            auto emitter = band_emitter(band);
+            static_cast<void>(emitter.process(update(1, Side::Bid, 100, 10, 100)));
+            static_cast<void>(emitter.process(update(2, Side::Bid, 99, 20, 110)));
+            static_cast<void>(emitter.process(update(3, Side::Bid, 98, 30, 120)));
+            static_cast<void>(emitter.process(update(4, Side::Ask, 102, 10, 130)));
+            const auto result = emitter.process(update(5, Side::Bid, 100, quantity, 140)).back();
+            const auto expected = (static_cast<double>(quantity) - 10.0) / 2.0;
+            FVL_CHECK(result.multi_level_ofi_event_window == expected);
+            FVL_CHECK(result.multi_level_ofi_time_window == expected);
+            if (!first.has_value()) {
+                first = result.multi_level_ofi_event_window;
+            }
+            FVL_CHECK(result.multi_level_ofi_event_window == first);
         }
-        FVL_CHECK(result.multi_level_ofi_event_window == first);
     }
     return true;
 }
@@ -366,6 +371,139 @@ bool test_band_windows_and_csv() {
     return true;
 }
 
+bool test_ring_overwrites_and_expiry() {
+    FeatureEmitter emitter{FeatureEmitterConfig{
+        .clock_interval_ns = 1'000, .event_window = 2, .time_window_ns = 15,
+        .band_ticks = 1, .venue_capacity = 2,
+    }};
+    FVL_CHECK(!emitter.dropped_entries(7).has_value());
+    static_cast<void>(emitter.process(update(1, Side::Bid, 100, 10, 100)));
+    static_cast<void>(emitter.process(update(2, Side::Ask, 102, 10, 110)));
+    FVL_CHECK(emitter.dropped_entries(7)->order_flow == 0);
+    const auto first = emitter.process(update(3, Side::Bid, 100, 14, 120)).back();
+    FVL_CHECK(first.ofi_event_window == -6.0);
+    FVL_CHECK(first.ofi_time_window == -6.0);
+    FVL_CHECK(first.multi_level_ofi_event_window == 2.0);
+    FVL_CHECK(emitter.dropped_entries(7)->order_flow == 1);
+    const auto second = emitter.process(update(4, Side::Bid, 100, 20, 130)).back();
+    FVL_CHECK(second.ofi_event_window == 10.0);
+    FVL_CHECK(second.ofi_time_window == 10.0);
+    FVL_CHECK(second.multi_level_ofi_event_window == 5.0);
+    FVL_CHECK(emitter.dropped_entries(7)->order_flow == 2);
+    for (std::uint64_t sequence = 1; sequence <= 4; ++sequence) {
+        const auto timestamp = 130 + sequence * 10;
+        const auto trade = emitter.process(Trade{
+            7, TradeSide::Buy, 103, sequence, timestamp, timestamp, sequence}).back();
+        FVL_CHECK(trade.trade_count_event_window == std::min(sequence, std::uint64_t{2}));
+    }
+    FVL_CHECK(emitter.dropped_entries(7)->trade_flow == 2);
+    const auto latest = emitter.process(update(4, Side::Bid, 100, 20, 175));
+    FVL_CHECK(latest.empty());
+    FVL_CHECK(emitter.dropped_entries(7)->order_flow == 2);
+    static_cast<void>(emitter.process(Trade{9, TradeSide::Sell, 103, 10, 180, 180, 1}));
+    FVL_CHECK(emitter.dropped_entries(9)->order_flow == 0);
+    FVL_CHECK(emitter.dropped_entries(9)->trade_flow == 0);
+    const auto clock = emitter.process(update(4, Side::Bid, 100, 20, 2'000));
+    FVL_CHECK(clock.size() == 4);
+    FVL_CHECK(clock.front().venue_id == 7);
+    FVL_CHECK(clock.front().ofi_event_window == 10.0);
+    FVL_CHECK(clock.front().ofi_time_window == 0.0);
+    FVL_CHECK(clock.front().multi_level_ofi_event_window == 5.0);
+    FVL_CHECK(!clock.front().multi_level_ofi_time_window.has_value());
+    FVL_CHECK(clock.front().signed_trade_volume_event_window == 7.0);
+    FVL_CHECK(clock.front().trade_count_event_window == 2);
+    FVL_CHECK(clock.front().trade_vwap_deviation_event_window == 2.0);
+    FVL_CHECK(clock.front().trade_count_time_window == 0);
+    FVL_CHECK(!clock.front().trade_vwap_deviation_time_window.has_value());
+    const auto counts = emitter.dropped_entries();
+    FVL_CHECK(counts.size() == 2);
+    FVL_CHECK(counts[0].venue_id == 7 && counts[0].order_flow == 2 && counts[0].trade_flow == 2);
+    FVL_CHECK(counts[1].venue_id == 9 && counts[1].order_flow == 0 && counts[1].trade_flow == 0);
+    return true;
+}
+
+bool test_output_append_and_clock_order() {
+    const FeatureEmitterConfig config{
+        .clock_interval_ns = 1'000, .event_window = 2, .time_window_ns = 10'000,
+        .band_ticks = 1, .venue_capacity = 2,
+    };
+    FeatureEmitter returning{config};
+    FeatureEmitter appending{config};
+    std::vector<fairvaluelab::FeatureSet> output;
+    output.reserve(16);
+    fairvaluelab::FeatureSet prefix;
+    prefix.venue_id = 999;
+    prefix.sample_timestamp_ns = 99'999;
+    output.push_back(prefix);
+    const std::array updates{
+        BookUpdate{9, Side::Bid, 100, 10, 100, 100, 1},
+        BookUpdate{7, Side::Bid, 100, 10, 110, 110, 1},
+        BookUpdate{9, Side::Ask, 102, 10, 2'100, 2'100, 2},
+    };
+    for (const auto& item : updates) {
+        const auto begin = output.size();
+        const auto expected = returning.process(item);
+        FVL_CHECK(appending.process(item, output).accepted());
+        FVL_CHECK(output.size() == begin + expected.size());
+        for (std::size_t index = 0; index < expected.size(); ++index) {
+            const auto& actual = output[begin + index];
+            FVL_CHECK(actual.venue_id == expected[index].venue_id);
+            FVL_CHECK(actual.sample_kind == expected[index].sample_kind);
+            FVL_CHECK(actual.sample_timestamp_ns == expected[index].sample_timestamp_ns);
+            FVL_CHECK(actual.bid_depth == expected[index].bid_depth);
+            FVL_CHECK(actual.ask_depth == expected[index].ask_depth);
+            FVL_CHECK(actual.ofi_event_window == expected[index].ofi_event_window);
+            FVL_CHECK(actual.multi_level_ofi_event_window == expected[index].multi_level_ofi_event_window);
+        }
+    }
+    FVL_CHECK(output.size() == 8);
+    FVL_CHECK(output.front().venue_id == 999 && output.front().sample_timestamp_ns == 99'999);
+    for (std::size_t index = 0; index < 4; ++index) {
+        FVL_CHECK(output[3 + index].sample_kind == SampleKind::Clock);
+        FVL_CHECK(output[3 + index].sample_timestamp_ns == 1'000 + (index / 2) * 1'000);
+        FVL_CHECK(output[3 + index].venue_id == (index % 2 == 0 ? 7 : 9));
+    }
+    const Trade trade{9, TradeSide::Buy, 103, 4, 2'200, 2'200, 1};
+    const auto begin = output.size();
+    const auto expected = returning.process(trade);
+    appending.process(trade, output);
+    FVL_CHECK(output.size() == begin + expected.size());
+    FVL_CHECK(output.back().signed_trade_volume_event_window == expected.back().signed_trade_volume_event_window);
+    FVL_CHECK(output.back().trade_vwap_deviation_event_window == expected.back().trade_vwap_deviation_event_window);
+    return true;
+}
+
+bool test_emitter_capacity_validation() {
+    for (const auto capacity : {std::size_t{0}, FeatureEmitter::maximum_event_window + 1}) {
+        bool rejected = false;
+        try {
+            FeatureEmitter emitter{FeatureEmitterConfig{.event_window = capacity}};
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        FVL_CHECK(rejected);
+    }
+    bool rejected = false;
+    try {
+        FeatureEmitter emitter{FeatureEmitterConfig{.venue_capacity = 0}};
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    FVL_CHECK(rejected);
+    FeatureEmitter emitter{FeatureEmitterConfig{.venue_capacity = 1}};
+    static_cast<void>(emitter.process(update(1, Side::Bid, 100, 10, 100)));
+    rejected = false;
+    try {
+        static_cast<void>(emitter.process(BookUpdate{9, Side::Bid, 100, 10, 110, 110, 1}));
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    FVL_CHECK(rejected);
+    FVL_CHECK(!emitter.dropped_entries(9).has_value());
+    FVL_CHECK(emitter.process(update(2, Side::Ask, 102, 10, 120)).size() == 1);
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -386,6 +524,9 @@ int main() {
         TestCase{"snapshot band and rejected updates", test_snapshot_band_and_rejected_updates},
         TestCase{"band reference rounding", test_band_reference_rounding},
         TestCase{"band windows and csv", test_band_windows_and_csv},
+        TestCase{"ring overwrites and expiry", test_ring_overwrites_and_expiry},
+        TestCase{"output append and clock order", test_output_append_and_clock_order},
+        TestCase{"emitter capacity validation", test_emitter_capacity_validation},
     };
 
     std::size_t passed = 0;

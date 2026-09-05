@@ -6,9 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <iosfwd>
-#include <map>
 #include <optional>
 #include <vector>
 
@@ -52,6 +50,7 @@ struct FeatureEmitterConfig {
     std::size_t event_window{100};
     TimestampNs time_window_ns{1'000'000'000};
     std::uint64_t band_ticks{5};
+    std::size_t venue_capacity{64};
 };
 
 [[nodiscard]] FeatureSet compute_features(const OrderBook& book, VenueId venue_id,
@@ -60,14 +59,61 @@ struct FeatureEmitterConfig {
                                           TimestampNs sample_timestamp_ns,
                                           SampleKind sample_kind);
 
+struct FeatureEmitterDroppedEntries {
+    VenueId venue_id{};
+    std::uint64_t order_flow{};
+    std::uint64_t trade_flow{};
+};
+
 class FeatureEmitter {
   public:
+    static constexpr std::size_t maximum_event_window = 4096;
+
     explicit FeatureEmitter(TimestampNs clock_interval_ns);
     explicit FeatureEmitter(FeatureEmitterConfig config);
+    FeatureEmitter(const FeatureEmitter& other);
+    FeatureEmitter& operator=(const FeatureEmitter& other);
+    FeatureEmitter(FeatureEmitter&& other) noexcept = default;
+    FeatureEmitter& operator=(FeatureEmitter&& other) noexcept = default;
     [[nodiscard]] std::vector<FeatureSet> process(const BookUpdate& update);
     [[nodiscard]] std::vector<FeatureSet> process(const Trade& trade);
+    [[nodiscard]] ApplyResult process(const BookUpdate& update, std::vector<FeatureSet>& output);
+    void process(const Trade& trade, std::vector<FeatureSet>& output);
+    [[nodiscard]] std::optional<FeatureEmitterDroppedEntries> dropped_entries(VenueId venue_id) const;
+    [[nodiscard]] std::vector<FeatureEmitterDroppedEntries> dropped_entries() const;
 
   private:
+    template <typename Value>
+    class FlowBuffer {
+      public:
+        explicit FlowBuffer(const std::size_t capacity) : capacity_(capacity) {}
+
+        void push_back(const Value& value) noexcept {
+            if (size_ == capacity_) {
+                values_[begin_] = value;
+                begin_ = (begin_ + 1) % capacity_;
+                ++dropped_entries_;
+            } else {
+                values_[(begin_ + size_) % capacity_] = value;
+                ++size_;
+            }
+        }
+
+        [[nodiscard]] const Value& operator[](const std::size_t index) const noexcept {
+            return values_[(begin_ + index) % capacity_];
+        }
+
+        [[nodiscard]] std::size_t size() const noexcept { return size_; }
+        [[nodiscard]] std::uint64_t dropped_entries() const noexcept { return dropped_entries_; }
+
+      private:
+        std::array<Value, maximum_event_window> values_{};
+        std::size_t capacity_{};
+        std::size_t begin_{};
+        std::size_t size_{};
+        std::uint64_t dropped_entries_{};
+    };
+
     struct VenueState {
         struct OrderFlow {
             TimestampNs timestamp_ns{};
@@ -82,6 +128,10 @@ class FeatureEmitter {
             std::optional<double> price_deviation;
         };
 
+        VenueState(const VenueId id, const std::size_t capacity)
+            : venue_id(id), order_flow(capacity), trade_flow(capacity) {}
+
+        VenueId venue_id{};
         OrderBook book;
         std::array<PriceLevel, BookSide::maximum_depth> previous_bids{};
         std::array<PriceLevel, BookSide::maximum_depth> previous_asks{};
@@ -91,26 +141,29 @@ class FeatureEmitter {
         TimestampNs exchange_timestamp_ns{};
         TimestampNs local_receipt_timestamp_ns{};
         TimestampNs next_clock_timestamp_ns{};
-        std::deque<OrderFlow> order_flow;
-        std::deque<TradeFlow> trade_flow;
+        FlowBuffer<OrderFlow> order_flow;
+        FlowBuffer<TradeFlow> trade_flow;
     };
 
-    [[nodiscard]] std::vector<FeatureSet> advance(TimestampNs timestamp_ns);
+    void advance(TimestampNs timestamp_ns, std::vector<FeatureSet>& output);
+    [[nodiscard]] VenueState& venue_state(VenueId venue_id);
     [[nodiscard]] FeatureSet features(const VenueState& state, VenueId venue_id,
                                       TimestampNs exchange_timestamp_ns,
                                       TimestampNs local_receipt_timestamp_ns,
                                       TimestampNs sample_timestamp_ns,
                                       SampleKind sample_kind) const;
-    void trim(VenueState& state, TimestampNs timestamp_ns) const;
 
     FeatureEmitterConfig config_;
     std::optional<TimestampNs> current_timestamp_ns_;
-    std::map<VenueId, VenueState> states_;
+    std::vector<VenueState> states_;
 };
 
 [[nodiscard]] std::uint64_t write_feature_csv(std::istream& input, std::ostream& output,
                                               TimestampNs clock_interval_ns);
 [[nodiscard]] std::uint64_t write_feature_csv(std::istream& input, std::ostream& output,
                                               FeatureEmitterConfig config);
+
+[[nodiscard]] std::uint64_t write_feature_csv(std::istream& input, std::ostream& output,
+                                              FeatureEmitter& emitter);
 
 }

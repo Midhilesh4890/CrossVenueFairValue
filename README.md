@@ -73,13 +73,32 @@ to the future venue adapter.
 
 ## Feature emitter allocation behavior
 
-The feature emitter stores previous book levels in fixed-capacity arrays and copies all
-retained levels up to book capacity. Book snapshots require no heap allocation.
-For an existing venue, duplicate, stale, and sequence-gap updates require no allocation or
-deallocation when no clock sample is due. Accepted updates and clock samples still allocate for
-returned feature vectors and rolling history; the full emitter is not allocation-free.
-The C++ suite checks rejected-update allocations and snapshot behavior at different configured price bands,
-rejected updates, deletion, and refilling an empty side.
+The output-parameter overloads `process(update, output)` and `process(trade, output)` append
+to caller-owned storage. Reserve enough space for the existing output, every clock sample
+that the next input will trigger across all venues, and its event sample. `output.clear()`
+allows that capacity to be reused. The book overload returns the actual `ApplyResult`.
+
+Construction reserves `FeatureEmitterConfig::venue_capacity` venue slots (default 64).
+Each slot has fixed arrays for book snapshots and order/trade flow. Each history ring uses
+`event_window` entries, up to `FeatureEmitter::maximum_event_window` (4,096). A full ring
+overwrites its oldest entry and increments its cumulative dropped-entry counter. Event
+windows contain the retained entries; time windows filter those entries by timestamp.
+`dropped_entries(venue_id)` exposes both counters without allocating, and `fvl_features`
+prints them per venue alongside its feature-row count. `--venue-capacity N` sets the number
+of venue slots; exceeding it raises an error instead of growing storage during processing.
+
+The allocation test measures accepted book updates with strictly increasing sequences,
+first-venue creation, event-only output, multi-venue clock batches, and accepted trades.
+It checks actual accepted-update counts against inputs fed, and asserts zero allocations
+and zero deallocations at history capacities 1, 100, and 4,096. Rejected updates have a
+separate named allocation test. Clock samples are sorted in place within the newly appended
+output range.
+
+Construction allocates the reserved venue storage. The returning `process` overloads and
+the all-venue `dropped_entries()` report construct vectors; callers choose the output-parameter
+overloads and per-venue accessor for allocation-free processing. Output-vector growth allocates
+when the caller has not reserved enough capacity. CSV parsing, formatting, and reporting run
+outside the measured processing path.
 
 ## Multi-level order flow imbalance
 

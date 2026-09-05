@@ -27,7 +27,7 @@ int main(const int argc, const char* const argv[]) {
     if (argc < 3 || (argc - 3) % 2 != 0) {
         std::cerr << "usage: fvl_features <normalized.csv> <features.csv> "
                      "[--clock-interval-ns N] [--event-window N] [--time-window-ns N] "
-                     "[--band-ticks N]\n";
+                     "[--band-ticks N] [--venue-capacity N]\n";
         return 1;
     }
 
@@ -45,6 +45,11 @@ int main(const int argc, const char* const argv[]) {
                 config.event_window = static_cast<std::size_t>(value);
             } else if (option == "--time-window-ns") {
                 config.time_window_ns = value;
+            } else if (option == "--venue-capacity") {
+                if (value > std::numeric_limits<std::size_t>::max()) {
+                    throw std::invalid_argument("venue capacity is too large");
+                }
+                config.venue_capacity = static_cast<std::size_t>(value);
             } else if (option == "--band-ticks") {
                 config.band_ticks = value;
             } else {
@@ -68,8 +73,14 @@ int main(const int argc, const char* const argv[]) {
     }
 
     try {
-        const auto rows = fairvaluelab::write_feature_csv(input, output, config);
+        fairvaluelab::FeatureEmitter emitter{config};
+        const auto rows = fairvaluelab::write_feature_csv(input, output, emitter);
         std::cout << "feature rows: " << rows << '\n';
+        for (const auto& dropped : emitter.dropped_entries()) {
+            std::cout << "venue " << dropped.venue_id
+                      << " dropped order flow entries: " << dropped.order_flow
+                      << " dropped trade flow entries: " << dropped.trade_flow << '\n';
+        }
     } catch (const std::exception& error) {
         std::cerr << "feature emission failed: " << error.what() << '\n';
         return 1;

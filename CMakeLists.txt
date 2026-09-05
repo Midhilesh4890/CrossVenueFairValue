@@ -127,5 +127,8 @@ if(BUILD_TESTING)
     target_link_libraries(fvl_feature_emitter_allocation_test PRIVATE FairValueLab::order_book)
     fvl_enable_warnings(fvl_feature_emitter_allocation_test)
     fvl_enable_sanitizers(fvl_feature_emitter_allocation_test)
-    add_test(NAME feature_emitter_allocation COMMAND fvl_feature_emitter_allocation_test)
+    add_test(NAME feature_emitter_accepted_allocation
+             COMMAND fvl_feature_emitter_allocation_test accepted)
+    add_test(NAME feature_emitter_rejected_allocation
+             COMMAND fvl_feature_emitter_allocation_test rejected)
 endif()

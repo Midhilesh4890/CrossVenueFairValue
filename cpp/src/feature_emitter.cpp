@@ -14,6 +14,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -269,23 +270,66 @@ fairvaluelab::FeatureEmitter::FeatureEmitter(const TimestampNs clock_interval_ns
 
 fairvaluelab::FeatureEmitter::FeatureEmitter(FeatureEmitterConfig config) : config_(config) {
     if (config_.clock_interval_ns == 0 || config_.event_window == 0 ||
-        config_.time_window_ns == 0 || config_.band_ticks == 0) {
+        config_.time_window_ns == 0 || config_.band_ticks == 0 || config_.venue_capacity == 0) {
         throw std::invalid_argument("feature emitter configuration must be positive");
     }
+    if (config_.event_window > maximum_event_window) {
+        throw std::invalid_argument("event window exceeds maximum history capacity");
+    }
+    states_.reserve(config_.venue_capacity);
 }
 
-void fairvaluelab::FeatureEmitter::trim(VenueState& state,
-                                        const TimestampNs timestamp_ns) const {
-    const auto cutoff =
-        timestamp_ns > config_.time_window_ns ? timestamp_ns - config_.time_window_ns : 0;
-    while (state.order_flow.size() > config_.event_window &&
-           state.order_flow.front().timestamp_ns < cutoff) {
-        state.order_flow.pop_front();
+fairvaluelab::FeatureEmitter::FeatureEmitter(const FeatureEmitter& other)
+    : FeatureEmitter(other.config_) {
+    current_timestamp_ns_ = other.current_timestamp_ns_;
+    states_.assign(other.states_.begin(), other.states_.end());
+}
+
+fairvaluelab::FeatureEmitter&
+fairvaluelab::FeatureEmitter::operator=(const FeatureEmitter& other) {
+    if (this != &other) {
+        FeatureEmitter replacement{other};
+        *this = std::move(replacement);
     }
-    while (state.trade_flow.size() > config_.event_window &&
-           state.trade_flow.front().timestamp_ns < cutoff) {
-        state.trade_flow.pop_front();
+    return *this;
+}
+
+fairvaluelab::FeatureEmitter::VenueState&
+fairvaluelab::FeatureEmitter::venue_state(const VenueId venue_id) {
+    for (auto& state : states_) {
+        if (state.venue_id == venue_id) {
+            return state;
+        }
     }
+    if (states_.capacity() < config_.venue_capacity) {
+        throw std::runtime_error("feature emitter has no reserved venue storage");
+    }
+    if (states_.size() == config_.venue_capacity) {
+        throw std::runtime_error("feature emitter venue capacity exceeded");
+    }
+    return states_.emplace_back(venue_id, config_.event_window);
+}
+
+std::optional<fairvaluelab::FeatureEmitterDroppedEntries>
+fairvaluelab::FeatureEmitter::dropped_entries(const VenueId venue_id) const {
+    for (const auto& state : states_) {
+        if (state.venue_id == venue_id) {
+            return FeatureEmitterDroppedEntries{venue_id, state.order_flow.dropped_entries(),
+                                                 state.trade_flow.dropped_entries()};
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<fairvaluelab::FeatureEmitterDroppedEntries>
+fairvaluelab::FeatureEmitter::dropped_entries() const {
+    std::vector<FeatureEmitterDroppedEntries> output;
+    output.reserve(states_.size());
+    for (const auto& state : states_) {
+        output.push_back(FeatureEmitterDroppedEntries{
+            state.venue_id, state.order_flow.dropped_entries(), state.trade_flow.dropped_entries()});
+    }
+    return output;
 }
 
 fairvaluelab::FeatureSet fairvaluelab::FeatureEmitter::features(
@@ -298,18 +342,13 @@ fairvaluelab::FeatureSet fairvaluelab::FeatureEmitter::features(
                             ? sample_timestamp_ns - config_.time_window_ns
                             : 0;
 
-    const auto order_event_begin =
-        state.order_flow.size() > config_.event_window
-            ? state.order_flow.end() - static_cast<std::ptrdiff_t>(config_.event_window)
-            : state.order_flow.begin();
-    for (auto item = order_event_begin; item != state.order_flow.end(); ++item) {
-        output.ofi_event_window += item->value;
-        if (item->multi_level_value.has_value()) {
+    for (std::size_t index = 0; index < state.order_flow.size(); ++index) {
+        const auto& item = state.order_flow[index];
+        output.ofi_event_window += item.value;
+        if (item.multi_level_value.has_value()) {
             output.multi_level_ofi_event_window =
-                output.multi_level_ofi_event_window.value_or(0.0) + *item->multi_level_value;
+                output.multi_level_ofi_event_window.value_or(0.0) + *item.multi_level_value;
         }
-    }
-    for (const auto& item : state.order_flow) {
         if (item.timestamp_ns >= cutoff) {
             output.ofi_time_window += item.value;
             if (item.multi_level_value.has_value()) {
@@ -321,16 +360,13 @@ fairvaluelab::FeatureSet fairvaluelab::FeatureEmitter::features(
 
     double event_weighted_deviation = 0.0;
     double event_deviation_volume = 0.0;
-    const auto trade_event_begin =
-        state.trade_flow.size() > config_.event_window
-            ? state.trade_flow.end() - static_cast<std::ptrdiff_t>(config_.event_window)
-            : state.trade_flow.begin();
-    for (auto item = trade_event_begin; item != state.trade_flow.end(); ++item) {
-        output.signed_trade_volume_event_window += item->signed_volume;
+    for (std::size_t index = 0; index < state.trade_flow.size(); ++index) {
+        const auto& item = state.trade_flow[index];
+        output.signed_trade_volume_event_window += item.signed_volume;
         ++output.trade_count_event_window;
-        if (item->price_deviation.has_value()) {
-            event_weighted_deviation += item->volume * *item->price_deviation;
-            event_deviation_volume += item->volume;
+        if (item.price_deviation.has_value()) {
+            event_weighted_deviation += item.volume * *item.price_deviation;
+            event_deviation_volume += item.volume;
         }
     }
     if (event_deviation_volume > 0.0) {
@@ -340,7 +376,8 @@ fairvaluelab::FeatureSet fairvaluelab::FeatureEmitter::features(
 
     double time_weighted_deviation = 0.0;
     double time_deviation_volume = 0.0;
-    for (const auto& item : state.trade_flow) {
+    for (std::size_t index = 0; index < state.trade_flow.size(); ++index) {
+        const auto& item = state.trade_flow[index];
         if (item.timestamp_ns < cutoff) {
             continue;
         }
@@ -358,97 +395,103 @@ fairvaluelab::FeatureSet fairvaluelab::FeatureEmitter::features(
     return output;
 }
 
-std::vector<fairvaluelab::FeatureSet>
-fairvaluelab::FeatureEmitter::advance(const TimestampNs timestamp_ns) {
+void fairvaluelab::FeatureEmitter::advance(const TimestampNs timestamp_ns,
+                                            std::vector<FeatureSet>& output) {
     if (current_timestamp_ns_.has_value() && timestamp_ns < *current_timestamp_ns_) {
         throw std::invalid_argument("events must be ordered by local receipt timestamp");
     }
 
-    std::vector<FeatureSet> output;
-    for (auto& [venue_id, state] : states_) {
+    const auto begin = output.size();
+    for (auto& state : states_) {
         while (state.initialized && state.next_clock_timestamp_ns <= timestamp_ns) {
-            trim(state, state.next_clock_timestamp_ns);
-            output.push_back(features(state, venue_id, state.exchange_timestamp_ns,
+            output.push_back(features(state, state.venue_id, state.exchange_timestamp_ns,
                                       state.local_receipt_timestamp_ns,
                                       state.next_clock_timestamp_ns, SampleKind::Clock));
             state.next_clock_timestamp_ns += config_.clock_interval_ns;
         }
     }
     current_timestamp_ns_ = timestamp_ns;
-    std::stable_sort(output.begin(), output.end(), [](const FeatureSet& lhs,
+    std::sort(output.begin() + static_cast<std::ptrdiff_t>(begin), output.end(), [](const FeatureSet& lhs,
                                                       const FeatureSet& rhs) {
         if (lhs.sample_timestamp_ns != rhs.sample_timestamp_ns) {
             return lhs.sample_timestamp_ns < rhs.sample_timestamp_ns;
         }
         return lhs.venue_id < rhs.venue_id;
     });
-    return output;
 }
 
 std::vector<fairvaluelab::FeatureSet>
 fairvaluelab::FeatureEmitter::process(const BookUpdate& update) {
-    auto output = advance(update.local_receipt_timestamp_ns);
-    auto [state, inserted] = states_.try_emplace(update.venue_id);
-    static_cast<void>(inserted);
-    auto& venue_state = state->second;
-    const std::span previous_bids{venue_state.previous_bids.data(), venue_state.previous_bid_count};
-    const std::span previous_asks{venue_state.previous_asks.data(), venue_state.previous_ask_count};
-    if (venue_state.book.apply(update).accepted()) {
-        const auto current_bids = venue_state.book.bids();
-        const auto current_asks = venue_state.book.asks();
+    std::vector<FeatureSet> output;
+    static_cast<void>(process(update, output));
+    return output;
+}
+
+fairvaluelab::ApplyResult fairvaluelab::FeatureEmitter::process(
+    const BookUpdate& update, std::vector<FeatureSet>& output) {
+    advance(update.local_receipt_timestamp_ns, output);
+    auto& state = venue_state(update.venue_id);
+    const std::span previous_bids{state.previous_bids.data(), state.previous_bid_count};
+    const std::span previous_asks{state.previous_asks.data(), state.previous_ask_count};
+    const auto result = state.book.apply(update);
+    if (result.accepted()) {
+        const auto current_bids = state.book.bids();
+        const auto current_asks = state.book.asks();
         const auto value = static_cast<double>(bid_flow(previous_bids, current_bids) +
                                                ask_flow(previous_asks, current_asks));
         const auto multi_value = multi_level_flow(previous_bids, previous_asks, current_bids,
                                                    current_asks, config_.band_ticks);
-        snapshot(venue_state.previous_bids, venue_state.previous_bid_count, current_bids);
-        snapshot(venue_state.previous_asks, venue_state.previous_ask_count, current_asks);
-        state->second.order_flow.push_back(
+        snapshot(state.previous_bids, state.previous_bid_count, current_bids);
+        snapshot(state.previous_asks, state.previous_ask_count, current_asks);
+        state.order_flow.push_back(
             VenueState::OrderFlow{update.local_receipt_timestamp_ns, value, multi_value});
-        state->second.exchange_timestamp_ns = update.exchange_timestamp_ns;
-        state->second.local_receipt_timestamp_ns = update.local_receipt_timestamp_ns;
-        if (!state->second.initialized) {
-            state->second.initialized = true;
-            state->second.next_clock_timestamp_ns = update.local_receipt_timestamp_ns +
+        state.exchange_timestamp_ns = update.exchange_timestamp_ns;
+        state.local_receipt_timestamp_ns = update.local_receipt_timestamp_ns;
+        if (!state.initialized) {
+            state.initialized = true;
+            state.next_clock_timestamp_ns = update.local_receipt_timestamp_ns +
                                                     config_.clock_interval_ns -
                                                     update.local_receipt_timestamp_ns %
                                                         config_.clock_interval_ns;
         }
-        trim(state->second, update.local_receipt_timestamp_ns);
-        output.push_back(features(state->second, update.venue_id, update.exchange_timestamp_ns,
+        output.push_back(features(state, update.venue_id, update.exchange_timestamp_ns,
                                   update.local_receipt_timestamp_ns,
                                   update.local_receipt_timestamp_ns, SampleKind::Event));
     }
-    return output;
+    return result;
 }
 
 std::vector<fairvaluelab::FeatureSet>
 fairvaluelab::FeatureEmitter::process(const Trade& trade) {
-    auto output = advance(trade.local_receipt_timestamp_ns);
-    auto [state, inserted] = states_.try_emplace(trade.venue_id);
-    static_cast<void>(inserted);
-    const auto mid = state->second.book.mid_price();
+    std::vector<FeatureSet> output;
+    process(trade, output);
+    return output;
+}
+
+void fairvaluelab::FeatureEmitter::process(const Trade& trade, std::vector<FeatureSet>& output) {
+    advance(trade.local_receipt_timestamp_ns, output);
+    auto& state = venue_state(trade.venue_id);
+    const auto mid = state.book.mid_price();
     const auto volume = static_cast<double>(trade.quantity);
-    state->second.trade_flow.push_back(VenueState::TradeFlow{
+    state.trade_flow.push_back(VenueState::TradeFlow{
         trade.local_receipt_timestamp_ns,
         trade.side == TradeSide::Buy ? volume : -volume,
         volume,
         mid.has_value() ? std::optional{static_cast<double>(trade.price_ticks) - *mid}
                         : std::nullopt,
     });
-    state->second.exchange_timestamp_ns = trade.exchange_timestamp_ns;
-    state->second.local_receipt_timestamp_ns = trade.local_receipt_timestamp_ns;
-    if (!state->second.initialized) {
-        state->second.initialized = true;
-        state->second.next_clock_timestamp_ns = trade.local_receipt_timestamp_ns +
+    state.exchange_timestamp_ns = trade.exchange_timestamp_ns;
+    state.local_receipt_timestamp_ns = trade.local_receipt_timestamp_ns;
+    if (!state.initialized) {
+        state.initialized = true;
+        state.next_clock_timestamp_ns = trade.local_receipt_timestamp_ns +
                                                 config_.clock_interval_ns -
                                                 trade.local_receipt_timestamp_ns %
                                                     config_.clock_interval_ns;
     }
-    trim(state->second, trade.local_receipt_timestamp_ns);
-    output.push_back(features(state->second, trade.venue_id, trade.exchange_timestamp_ns,
+    output.push_back(features(state, trade.venue_id, trade.exchange_timestamp_ns,
                               trade.local_receipt_timestamp_ns,
                               trade.local_receipt_timestamp_ns, SampleKind::Event));
-    return output;
 }
 
 std::uint64_t fairvaluelab::write_feature_csv(std::istream& input, std::ostream& output,
@@ -459,6 +502,12 @@ std::uint64_t fairvaluelab::write_feature_csv(std::istream& input, std::ostream&
 
 std::uint64_t fairvaluelab::write_feature_csv(std::istream& input, std::ostream& output,
                                               const FeatureEmitterConfig config) {
+    FeatureEmitter emitter{config};
+    return write_feature_csv(input, output, emitter);
+}
+
+std::uint64_t fairvaluelab::write_feature_csv(std::istream& input, std::ostream& output,
+                                              FeatureEmitter& emitter) {
     std::string line;
     if (!std::getline(input, line) || !is_normalized_csv_header(line)) {
         throw std::runtime_error("invalid normalized log header");
@@ -472,7 +521,6 @@ std::uint64_t fairvaluelab::write_feature_csv(std::istream& input, std::ostream&
               "signed_trade_volume_time_window,trade_count_event_window,trade_count_time_window,"
               "trade_vwap_deviation_event_window,trade_vwap_deviation_time_window\n";
     output << std::setprecision(17);
-    FeatureEmitter emitter{config};
     std::uint64_t row_count = 0;
     std::size_t line_number = 1;
     while (std::getline(input, line)) {
