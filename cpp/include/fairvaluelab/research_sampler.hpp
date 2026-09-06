@@ -7,13 +7,29 @@
 
 namespace fairvaluelab {
 
+struct FutureFairValueTarget {
+    TimestampNs horizon_ns{};
+    std::optional<TimestampNs> target_timestamp_ns;
+    std::optional<TimestampNs> target_delay_ns;
+    std::optional<double> future_consolidated_mid;
+    std::optional<double> future_consolidated_microprice;
+    std::optional<double> mid_return;
+    std::optional<double> microprice_return;
+    std::optional<std::int8_t> mid_direction;
+    std::optional<std::int8_t> microprice_direction;
+};
+
 struct CrossVenueSample {
     SampleKind sample_kind{SampleKind::Clock};
     TimestampNs sample_timestamp_ns{};
     ConsolidatedReference consolidated;
     std::vector<VenueCrossFeatures> venue_features;
     std::vector<PairwiseCrossFeatures> pairwise_features;
+    std::vector<FutureFairValueTarget> future_targets;
 };
+
+void align_future_targets(std::span<CrossVenueSample> samples,
+                          std::span<const TimestampNs> horizons_ns);
 
 struct ResearchSamplerConfig {
     SampleKind sample_kind{SampleKind::Clock};

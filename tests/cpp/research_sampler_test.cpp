@@ -3,6 +3,8 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <optional>
+#include <stdexcept>
 #include <string_view>
 #include <vector>
 
@@ -120,6 +122,67 @@ bool test_configurable_clock_intervals() {
     return true;
 }
 
+CrossVenueSample sample(const std::uint64_t timestamp, const std::optional<double> mid,
+                        const std::optional<double> microprice) {
+    CrossVenueSample value;
+    value.sample_timestamp_ns = timestamp;
+    value.consolidated.sample_timestamp_ns = timestamp;
+    value.consolidated.mid = mid;
+    value.consolidated.microprice = microprice;
+    value.consolidated.valid_venue_count = mid.has_value() || microprice.has_value() ? 1 : 0;
+    return value;
+}
+
+bool test_multiple_future_target_horizons() {
+    std::vector samples{
+        sample(100, 100.0, 100.5),
+        sample(110, 102.0, 101.5),
+        sample(155, 99.0, 99.5),
+    };
+    constexpr std::array horizons{10ULL, 50ULL};
+    fairvaluelab::align_future_targets(samples, horizons);
+
+    FVL_CHECK(samples[0].future_targets.size() == 2);
+    const auto& short_target = samples[0].future_targets[0];
+    FVL_CHECK(short_target.horizon_ns == 10);
+    FVL_CHECK(short_target.target_timestamp_ns == 110);
+    FVL_CHECK(short_target.target_delay_ns == 0);
+    FVL_CHECK(short_target.future_consolidated_mid == 102.0);
+    FVL_CHECK(short_target.future_consolidated_microprice == 101.5);
+    FVL_CHECK(short_target.mid_return == 2.0);
+    FVL_CHECK(short_target.microprice_return == 1.0);
+    FVL_CHECK(short_target.mid_direction == 1);
+    FVL_CHECK(short_target.microprice_direction == 1);
+
+    const auto& long_target = samples[0].future_targets[1];
+    FVL_CHECK(long_target.target_timestamp_ns == 155);
+    FVL_CHECK(long_target.target_delay_ns == 5);
+    FVL_CHECK(long_target.mid_return == -1.0);
+    FVL_CHECK(long_target.microprice_return == -1.0);
+    FVL_CHECK(long_target.mid_direction == -1);
+    FVL_CHECK(long_target.microprice_direction == -1);
+
+    FVL_CHECK(samples[1].future_targets[0].target_timestamp_ns == 155);
+    FVL_CHECK(samples[1].future_targets[0].target_delay_ns == 35);
+    FVL_CHECK(!samples.back().future_targets[0].target_timestamp_ns.has_value());
+    FVL_CHECK(!samples.back().future_targets[0].mid_return.has_value());
+    return true;
+}
+
+bool test_target_configuration_validation() {
+    std::vector samples{sample(100, 100.0, 100.0)};
+    for (const auto horizons : {std::array{0ULL, 10ULL}, std::array{10ULL, 10ULL}}) {
+        bool rejected = false;
+        try {
+            fairvaluelab::align_future_targets(samples, horizons);
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        FVL_CHECK(rejected);
+    }
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -132,6 +195,8 @@ int main() {
         TestCase{"clock sampling groups venues", test_clock_sampling_groups_venues},
         TestCase{"event sampling uses only event rows", test_event_sampling_uses_only_event_rows},
         TestCase{"configurable clock intervals", test_configurable_clock_intervals},
+        TestCase{"multiple future target horizons", test_multiple_future_target_horizons},
+        TestCase{"target configuration validation", test_target_configuration_validation},
     };
     for (const auto& test : tests) {
         if (!test.run()) {
