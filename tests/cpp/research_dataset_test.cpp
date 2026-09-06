@@ -1,11 +1,13 @@
 #include "fairvaluelab/research_dataset.hpp"
 #include "fairvaluelab/normalized_csv.hpp"
 
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -16,6 +18,22 @@ namespace {
             return false;                                                                          \
         }                                                                                          \
     } while (false)
+
+std::vector<std::string_view> split(const std::string_view row) {
+    std::vector<std::string_view> fields;
+    std::size_t begin = 0;
+    while (begin <= row.size()) {
+        const auto separator = row.find(',', begin);
+        fields.push_back(row.substr(begin, separator == std::string_view::npos
+                                               ? row.size() - begin
+                                               : separator - begin));
+        if (separator == std::string_view::npos) {
+            break;
+        }
+        begin = separator + 1;
+    }
+    return fields;
+}
 
 bool test_research_dataset_csv() {
     std::istringstream input{
@@ -42,12 +60,33 @@ bool test_research_dataset_csv() {
     const auto csv = output.str();
     FVL_CHECK(csv.starts_with("sample_kind,sample_timestamp_ns,consolidated_mid"));
     FVL_CHECK(csv.find("venue_1_mid_minus_consolidated_mid") != std::string::npos);
+    FVL_CHECK(csv.find("venue_1_latest_local_receipt_timestamp_ns") != std::string::npos);
+    FVL_CHECK(csv.find("venue_1_latest_exchange_timestamp_ns") != std::string::npos);
     FVL_CHECK(csv.find("venue_2_ofi_time_window") != std::string::npos);
     FVL_CHECK(csv.find("pair_1_2_mid_difference") != std::string::npos);
     FVL_CHECK(csv.find("future_consolidated_mid_10") != std::string::npos);
+    FVL_CHECK(csv.find("target_timestamp_10,target_delay_ns_10") != std::string::npos);
     FVL_CHECK(csv.find("clock,110,") != std::string::npos);
     FVL_CHECK(csv.find("clock,120,") != std::string::npos);
     FVL_CHECK(csv.find("clock,130,") != std::string::npos);
+
+    std::istringstream rows{csv};
+    std::string header_line;
+    std::string first_row;
+    FVL_CHECK(static_cast<bool>(std::getline(rows, header_line)));
+    FVL_CHECK(static_cast<bool>(std::getline(rows, first_row)));
+    const auto header_fields = split(header_line);
+    const auto row_fields = split(first_row);
+    FVL_CHECK(header_fields.size() == row_fields.size());
+    const auto target_timestamp =
+        std::find(header_fields.begin(), header_fields.end(), "target_timestamp_10");
+    const auto target_delay =
+        std::find(header_fields.begin(), header_fields.end(), "target_delay_ns_10");
+    FVL_CHECK(target_timestamp != header_fields.end());
+    FVL_CHECK(target_delay != header_fields.end());
+    FVL_CHECK(row_fields[static_cast<std::size_t>(target_timestamp - header_fields.begin())] ==
+              "120");
+    FVL_CHECK(row_fields[static_cast<std::size_t>(target_delay - header_fields.begin())] == "0");
     return true;
 }
 

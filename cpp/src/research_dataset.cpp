@@ -50,7 +50,8 @@ std::string pair_prefix(const VenuePair pair) {
 void write_venue_header(std::ostream& output, const VenueId venue_id) {
     const auto prefix = venue_prefix(venue_id);
     output << ',' << prefix << "observed," << prefix << "fresh," << prefix << "age_ns," << prefix
-           << "mid_minus_consolidated_mid," << prefix
+           << "latest_local_receipt_timestamp_ns," << prefix << "latest_exchange_timestamp_ns,"
+           << prefix << "mid_minus_consolidated_mid," << prefix
            << "microprice_minus_consolidated_microprice," << prefix << "spread_ticks," << prefix
            << "imbalance_l1," << prefix << "imbalance_l3," << prefix << "imbalance_l5," << prefix
            << "bid_depth," << prefix << "ask_depth," << prefix << "ofi_event_window," << prefix
@@ -74,7 +75,8 @@ void write_pair_header(std::ostream& output, const VenuePair pair) {
 
 void write_target_header(std::ostream& output, const TimestampNs horizon) {
     const auto suffix = '_' + std::to_string(horizon);
-    output << ",future_consolidated_mid" << suffix << ",future_consolidated_microprice" << suffix
+    output << ",target_timestamp" << suffix << ",target_delay_ns" << suffix
+           << ",future_consolidated_mid" << suffix << ",future_consolidated_microprice" << suffix
            << ",mid_return" << suffix << ",microprice_return" << suffix << ",mid_direction"
            << suffix << ",microprice_direction" << suffix;
 }
@@ -82,6 +84,10 @@ void write_target_header(std::ostream& output, const TimestampNs horizon) {
 void write_venue(std::ostream& output, const VenueCrossFeatures& venue) {
     output << ',' << (venue.observed ? 1 : 0) << ',' << (venue.fresh ? 1 : 0) << ',';
     write_optional(output, venue.age_ns);
+    output << ',';
+    write_optional(output, venue.latest_local_receipt_timestamp_ns);
+    output << ',';
+    write_optional(output, venue.latest_exchange_timestamp_ns);
     output << ',';
     write_optional(output, venue.mid_minus_consolidated_mid);
     output << ',';
@@ -142,6 +148,10 @@ void write_pair(std::ostream& output, const PairwiseCrossFeatures& pair) {
 }
 
 void write_target(std::ostream& output, const FutureFairValueTarget& target) {
+    output << ',';
+    write_optional(output, target.target_timestamp_ns);
+    output << ',';
+    write_optional(output, target.target_delay_ns);
     output << ',';
     write_optional(output, target.future_consolidated_mid);
     output << ',';
