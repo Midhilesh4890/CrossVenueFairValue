@@ -43,6 +43,8 @@ struct FeatureSet {
     std::uint64_t trade_count_time_window{};
     std::optional<double> trade_vwap_deviation_event_window;
     std::optional<double> trade_vwap_deviation_time_window;
+    std::optional<PriceTicks> best_bid_ticks;
+    std::optional<PriceTicks> best_ask_ticks;
 };
 
 struct FeatureEmitterConfig {

@@ -262,6 +262,8 @@ fairvaluelab::FeatureSet fairvaluelab::compute_features(
         0,
         std::nullopt,
         std::nullopt,
+        book.best_bid().has_value() ? std::optional{book.best_bid()->price_ticks} : std::nullopt,
+        book.best_ask().has_value() ? std::optional{book.best_ask()->price_ticks} : std::nullopt,
     };
 }
 

@@ -42,6 +42,7 @@ add_library(
     fairvaluelab_order_book
     cpp/src/capture_converter.cpp
     cpp/src/capture_validation.cpp
+    cpp/src/cross_venue.cpp
     cpp/src/feature_emitter.cpp
     cpp/src/multi_replay.cpp
     cpp/src/normalized_csv.cpp
@@ -143,4 +144,10 @@ if(BUILD_TESTING)
              COMMAND fvl_feature_emitter_allocation_test accepted)
     add_test(NAME feature_emitter_rejected_allocation
              COMMAND fvl_feature_emitter_allocation_test rejected)
+
+    add_executable(fvl_cross_venue_test tests/cpp/cross_venue_test.cpp)
+    target_link_libraries(fvl_cross_venue_test PRIVATE FairValueLab::order_book)
+    fvl_enable_warnings(fvl_cross_venue_test)
+    fvl_enable_sanitizers(fvl_cross_venue_test)
+    add_test(NAME cross_venue COMMAND fvl_cross_venue_test)
 endif()
