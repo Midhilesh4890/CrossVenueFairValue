@@ -47,6 +47,7 @@ add_library(
     cpp/src/multi_replay.cpp
     cpp/src/normalized_csv.cpp
     cpp/src/order_book.cpp
+    cpp/src/research_sampler.cpp
     cpp/src/venue.cpp
     cpp/src/venue_adapters.cpp
 )
@@ -150,4 +151,10 @@ if(BUILD_TESTING)
     fvl_enable_warnings(fvl_cross_venue_test)
     fvl_enable_sanitizers(fvl_cross_venue_test)
     add_test(NAME cross_venue COMMAND fvl_cross_venue_test)
+
+    add_executable(fvl_research_sampler_test tests/cpp/research_sampler_test.cpp)
+    target_link_libraries(fvl_research_sampler_test PRIVATE FairValueLab::order_book)
+    fvl_enable_warnings(fvl_research_sampler_test)
+    fvl_enable_sanitizers(fvl_research_sampler_test)
+    add_test(NAME research_sampler COMMAND fvl_research_sampler_test)
 endif()
