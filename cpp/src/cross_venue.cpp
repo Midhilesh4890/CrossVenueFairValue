@@ -3,7 +3,8 @@
 #include <stdexcept>
 
 fairvaluelab::CrossVenueSynchronizer::CrossVenueSynchronizer(
-    const std::span<const VenueId> venue_ids) {
+    const std::span<const VenueId> venue_ids, const CrossVenueSynchronizerConfig config)
+    : config_(config) {
     if (venue_ids.empty()) {
         throw std::invalid_argument("at least one venue must be configured");
     }
@@ -69,4 +70,26 @@ fairvaluelab::CrossVenueSynchronizer::states() const noexcept {
 std::optional<fairvaluelab::TimestampNs>
 fairvaluelab::CrossVenueSynchronizer::latest_sample_timestamp_ns() const noexcept {
     return latest_sample_timestamp_ns_;
+}
+
+fairvaluelab::VenueFreshness
+fairvaluelab::CrossVenueSynchronizer::freshness(const VenueId venue_id,
+                                                const TimestampNs sample_timestamp_ns) const noexcept {
+    const auto venue_state = state(venue_id);
+    if (!venue_state.has_value() || !venue_state->get().observed) {
+        return {};
+    }
+    const auto receipt_timestamp = venue_state->get().latest_local_receipt_timestamp_ns;
+    if (sample_timestamp_ns < receipt_timestamp) {
+        return VenueFreshness{.observed = true, .usable = false, .age_ns = std::nullopt};
+    }
+    const auto age = sample_timestamp_ns - receipt_timestamp;
+    return VenueFreshness{.observed = true,
+                          .usable = age <= config_.max_staleness_ns,
+                          .age_ns = age};
+}
+
+fairvaluelab::TimestampNs
+fairvaluelab::CrossVenueSynchronizer::max_staleness_ns() const noexcept {
+    return config_.max_staleness_ns;
 }
