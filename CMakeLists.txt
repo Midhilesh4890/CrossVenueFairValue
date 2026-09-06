@@ -166,6 +166,10 @@ if(BUILD_TESTING)
 
     add_executable(fvl_research_dataset_test tests/cpp/research_dataset_test.cpp)
     target_link_libraries(fvl_research_dataset_test PRIVATE FairValueLab::order_book)
+    target_compile_definitions(
+        fvl_research_dataset_test
+        PRIVATE FVL_RESEARCH_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/data/fixtures/multi_venue_updates.csv"
+    )
     fvl_enable_warnings(fvl_research_dataset_test)
     fvl_enable_sanitizers(fvl_research_dataset_test)
     add_test(NAME research_dataset COMMAND fvl_research_dataset_test)

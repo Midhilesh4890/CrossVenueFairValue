@@ -3,11 +3,16 @@
 
 #include <algorithm>
 #include <array>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#ifndef FVL_RESEARCH_FIXTURE_PATH
+#define FVL_RESEARCH_FIXTURE_PATH "data/fixtures/multi_venue_updates.csv"
+#endif
 
 namespace {
 
@@ -106,6 +111,48 @@ bool test_dataset_rejects_bad_input() {
     return true;
 }
 
+bool test_synthetic_multi_venue_fixture() {
+    std::ifstream input{FVL_RESEARCH_FIXTURE_PATH};
+    FVL_CHECK(input.good());
+    std::ostringstream output;
+    fairvaluelab::ResearchDatasetConfig config;
+    config.sampler.feature_emitter.clock_interval_ns = 50'000'000;
+    config.sampler.feature_emitter.venue_capacity = 3;
+    config.sampler.synchronizer.max_staleness_ns = 100'000'000;
+    config.horizons_ns = {50'000'000};
+    config.target_alignment.max_target_delay_ns = 0;
+    const auto report = fairvaluelab::generate_research_dataset_csv(input, output, config);
+    FVL_CHECK(report.input_events == 1'107);
+    FVL_CHECK(report.sample_rows == 320);
+    FVL_CHECK(report.venue_count == 3);
+    FVL_CHECK(report.pair_count == 3);
+
+    std::istringstream rows{output.str()};
+    std::string line;
+    FVL_CHECK(static_cast<bool>(std::getline(rows, line)));
+    const auto header = split(line);
+    const auto sample_timestamp =
+        std::find(header.begin(), header.end(), "sample_timestamp_ns") - header.begin();
+    const auto venue_three_fresh =
+        std::find(header.begin(), header.end(), "venue_3_fresh") - header.begin();
+    FVL_CHECK(sample_timestamp < static_cast<std::ptrdiff_t>(header.size()));
+    FVL_CHECK(venue_three_fresh < static_cast<std::ptrdiff_t>(header.size()));
+    bool saw_stale = false;
+    bool saw_recovered = false;
+    while (std::getline(rows, line)) {
+        const auto fields = split(line);
+        if (fields[static_cast<std::size_t>(sample_timestamp)] == "10100000000") {
+            saw_stale = fields[static_cast<std::size_t>(venue_three_fresh)] == "0";
+        }
+        if (fields[static_cast<std::size_t>(sample_timestamp)] == "10500000000") {
+            saw_recovered = fields[static_cast<std::size_t>(venue_three_fresh)] == "1";
+        }
+    }
+    FVL_CHECK(saw_stale);
+    FVL_CHECK(saw_recovered);
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -117,6 +164,7 @@ int main() {
     constexpr std::array tests{
         TestCase{"research dataset CSV", test_research_dataset_csv},
         TestCase{"dataset rejects bad input", test_dataset_rejects_bad_input},
+        TestCase{"synthetic multi-venue fixture", test_synthetic_multi_venue_fixture},
     };
     for (const auto& test : tests) {
         if (!test.run()) {
