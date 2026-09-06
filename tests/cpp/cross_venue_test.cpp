@@ -11,6 +11,7 @@ using fairvaluelab::CrossVenueSynchronizer;
 using fairvaluelab::CrossVenueSynchronizerConfig;
 using fairvaluelab::FeatureSet;
 using fairvaluelab::SynchronizerUpdateStatus;
+using fairvaluelab::VenuePair;
 
 #define FVL_CHECK(condition)                                                                       \
     do {                                                                                           \
@@ -256,6 +257,86 @@ bool test_per_venue_cross_features() {
     return true;
 }
 
+bool test_pairwise_cross_features() {
+    constexpr std::array venues{fairvaluelab::VenueId{10}, fairvaluelab::VenueId{20},
+                                fairvaluelab::VenueId{30}};
+    constexpr std::array pairs{VenuePair{10, 20}, VenuePair{20, 30}};
+    CrossVenueSynchronizer synchronizer{
+        venues, pairs, CrossVenueSynchronizerConfig{.max_staleness_ns = 100}};
+    auto first = features(10, 1'000, 1'000, 101.0);
+    first.imbalance_l1 = 0.5;
+    first.imbalance_l3 = 0.4;
+    first.imbalance_l5 = 0.3;
+    first.ofi_event_window = 7.0;
+    first.ofi_time_window = 6.0;
+    first.signed_trade_volume_event_window = 5.0;
+    first.signed_trade_volume_time_window = 4.0;
+    auto second = features(20, 1'010, 1'010, 103.0);
+    second.imbalance_l1 = -0.5;
+    second.imbalance_l3 = -0.4;
+    second.imbalance_l5 = -0.3;
+    second.ofi_event_window = 2.0;
+    second.ofi_time_window = 1.0;
+    second.signed_trade_volume_event_window = -1.0;
+    second.signed_trade_volume_time_window = -2.0;
+    FVL_CHECK(synchronizer.update(first) == SynchronizerUpdateStatus::Accepted);
+    FVL_CHECK(synchronizer.update(second) == SynchronizerUpdateStatus::Accepted);
+
+    std::array<fairvaluelab::PairwiseCrossFeatures, 2> output{};
+    FVL_CHECK(synchronizer.pair_count() == 2);
+    FVL_CHECK(synchronizer.venue_pairs()[0].first == 10);
+    FVL_CHECK(synchronizer.venue_pairs()[0].second == 20);
+    FVL_CHECK(synchronizer.pairwise_features(1'050, output));
+    FVL_CHECK(output[0].both_fresh);
+    FVL_CHECK(output[0].mid_difference == -2.0);
+    FVL_CHECK(output[0].microprice_difference == -2.0);
+    FVL_CHECK(output[0].imbalance_l1_difference == 1.0);
+    FVL_CHECK(output[0].imbalance_l3_difference == 0.8);
+    FVL_CHECK(output[0].imbalance_l5_difference == 0.6);
+    FVL_CHECK(output[0].ofi_event_window_difference == 5.0);
+    FVL_CHECK(output[0].ofi_time_window_difference == 5.0);
+    FVL_CHECK(output[0].signed_trade_volume_event_window_difference == 6.0);
+    FVL_CHECK(output[0].signed_trade_volume_time_window_difference == 6.0);
+    FVL_CHECK(output[0].receipt_timestamp_difference_ns == -10);
+    FVL_CHECK(!output[1].both_fresh);
+    FVL_CHECK(!output[1].mid_difference.has_value());
+
+    second.imbalance_l3.reset();
+    second.sample_timestamp_ns = 1'060;
+    second.local_receipt_timestamp_ns = 1'060;
+    FVL_CHECK(synchronizer.update(second) == SynchronizerUpdateStatus::Accepted);
+    FVL_CHECK(synchronizer.pairwise_features(1'060, output));
+    FVL_CHECK(!output[0].imbalance_l3_difference.has_value());
+    FVL_CHECK(output[0].mid_difference == -2.0);
+
+    std::array<fairvaluelab::PairwiseCrossFeatures, 1> wrong_size{};
+    FVL_CHECK(!synchronizer.pairwise_features(1'060, wrong_size));
+    return true;
+}
+
+bool test_pair_configuration_validation() {
+    constexpr std::array venues{fairvaluelab::VenueId{10}, fairvaluelab::VenueId{20}};
+    for (const auto invalid : {VenuePair{10, 10}, VenuePair{10, 30}}) {
+        bool rejected = false;
+        try {
+            const std::array pairs{invalid};
+            CrossVenueSynchronizer synchronizer{venues, pairs};
+        } catch (const std::invalid_argument&) {
+            rejected = true;
+        }
+        FVL_CHECK(rejected);
+    }
+    constexpr std::array duplicates{VenuePair{10, 20}, VenuePair{10, 20}};
+    bool duplicate_rejected = false;
+    try {
+        CrossVenueSynchronizer synchronizer{venues, duplicates};
+    } catch (const std::invalid_argument&) {
+        duplicate_rejected = true;
+    }
+    FVL_CHECK(duplicate_rejected);
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -273,6 +354,8 @@ int main() {
         TestCase{"consolidated reference", test_consolidated_reference},
         TestCase{"consolidated missing values", test_consolidated_missing_values},
         TestCase{"per-venue cross features", test_per_venue_cross_features},
+        TestCase{"pairwise cross features", test_pairwise_cross_features},
+        TestCase{"pair configuration validation", test_pair_configuration_validation},
     };
     for (const auto& test : tests) {
         if (!test.run()) {

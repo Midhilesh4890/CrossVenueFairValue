@@ -1,7 +1,34 @@
 #include "fairvaluelab/cross_venue.hpp"
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
+
+namespace {
+
+template <typename Value>
+std::optional<double> optional_difference(const std::optional<Value>& first,
+                                          const std::optional<Value>& second) noexcept {
+    if (!first.has_value() || !second.has_value()) {
+        return std::nullopt;
+    }
+    return static_cast<double>(*first) - static_cast<double>(*second);
+}
+
+std::optional<std::int64_t> timestamp_difference(const fairvaluelab::TimestampNs first,
+                                                 const fairvaluelab::TimestampNs second) noexcept {
+    constexpr auto maximum = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+    if (first >= second) {
+        const auto magnitude = first - second;
+        return magnitude <= maximum ? std::optional{static_cast<std::int64_t>(magnitude)}
+                                    : std::nullopt;
+    }
+    const auto magnitude = second - first;
+    return magnitude <= maximum ? std::optional{-static_cast<std::int64_t>(magnitude)}
+                                : std::nullopt;
+}
+
+} // namespace
 
 fairvaluelab::CrossVenueSynchronizer::CrossVenueSynchronizer(
     const std::span<const VenueId> venue_ids, const CrossVenueSynchronizerConfig config)
@@ -19,6 +46,25 @@ fairvaluelab::CrossVenueSynchronizer::CrossVenueSynchronizer(
         CrossVenueVenueState state{};
         state.venue_id = venue_id;
         states_.push_back(state);
+    }
+}
+
+fairvaluelab::CrossVenueSynchronizer::CrossVenueSynchronizer(
+    const std::span<const VenueId> venue_ids, const std::span<const VenuePair> venue_pairs,
+    const CrossVenueSynchronizerConfig config)
+    : CrossVenueSynchronizer(venue_ids, config) {
+    venue_pairs_.reserve(venue_pairs.size());
+    for (const auto pair : venue_pairs) {
+        if (pair.first == pair.second || !state(pair.first).has_value() ||
+            !state(pair.second).has_value()) {
+            throw std::invalid_argument("venue pair must contain two configured venues");
+        }
+        for (const auto configured : venue_pairs_) {
+            if (configured.first == pair.first && configured.second == pair.second) {
+                throw std::invalid_argument("venue pairs must be unique");
+            }
+        }
+        venue_pairs_.push_back(pair);
     }
 }
 
@@ -175,4 +221,60 @@ bool fairvaluelab::CrossVenueSynchronizer::venue_features(
 
 std::size_t fairvaluelab::CrossVenueSynchronizer::venue_count() const noexcept {
     return states_.size();
+}
+
+bool fairvaluelab::CrossVenueSynchronizer::pairwise_features(
+    const TimestampNs sample_timestamp_ns,
+    const std::span<PairwiseCrossFeatures> output) const noexcept {
+    if (output.size() != venue_pairs_.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < venue_pairs_.size(); ++index) {
+        const auto pair = venue_pairs_[index];
+        auto& features = output[index];
+        features = {};
+        features.venues = pair;
+        const auto first_state = state(pair.first);
+        const auto second_state = state(pair.second);
+        if (!first_state.has_value() || !second_state.has_value() ||
+            !freshness(pair.first, sample_timestamp_ns).usable ||
+            !freshness(pair.second, sample_timestamp_ns).usable) {
+            continue;
+        }
+        features.both_fresh = true;
+        const auto& first = first_state->get();
+        const auto& second = second_state->get();
+        features.mid_difference =
+            optional_difference(first.features.mid_price, second.features.mid_price);
+        features.microprice_difference =
+            optional_difference(first.features.microprice, second.features.microprice);
+        features.imbalance_l1_difference =
+            optional_difference(first.features.imbalance_l1, second.features.imbalance_l1);
+        features.imbalance_l3_difference =
+            optional_difference(first.features.imbalance_l3, second.features.imbalance_l3);
+        features.imbalance_l5_difference =
+            optional_difference(first.features.imbalance_l5, second.features.imbalance_l5);
+        features.ofi_event_window_difference =
+            first.features.ofi_event_window - second.features.ofi_event_window;
+        features.ofi_time_window_difference =
+            first.features.ofi_time_window - second.features.ofi_time_window;
+        features.signed_trade_volume_event_window_difference =
+            first.features.signed_trade_volume_event_window -
+            second.features.signed_trade_volume_event_window;
+        features.signed_trade_volume_time_window_difference =
+            first.features.signed_trade_volume_time_window -
+            second.features.signed_trade_volume_time_window;
+        features.receipt_timestamp_difference_ns = timestamp_difference(
+            first.latest_local_receipt_timestamp_ns, second.latest_local_receipt_timestamp_ns);
+    }
+    return true;
+}
+
+std::span<const fairvaluelab::VenuePair>
+fairvaluelab::CrossVenueSynchronizer::venue_pairs() const noexcept {
+    return venue_pairs_;
+}
+
+std::size_t fairvaluelab::CrossVenueSynchronizer::pair_count() const noexcept {
+    return venue_pairs_.size();
 }
