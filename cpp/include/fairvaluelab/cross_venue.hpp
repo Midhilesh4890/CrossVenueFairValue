@@ -37,6 +37,15 @@ struct VenueFreshness {
     std::optional<TimestampNs> age_ns;
 };
 
+struct ConsolidatedReference {
+    TimestampNs sample_timestamp_ns{};
+    std::optional<double> mid;
+    std::optional<double> microprice;
+    std::size_t valid_venue_count{};
+    std::size_t mid_venue_count{};
+    std::size_t microprice_venue_count{};
+};
+
 class CrossVenueSynchronizer {
   public:
     explicit CrossVenueSynchronizer(
@@ -51,6 +60,8 @@ class CrossVenueSynchronizer {
     [[nodiscard]] VenueFreshness freshness(VenueId venue_id,
                                            TimestampNs sample_timestamp_ns) const noexcept;
     [[nodiscard]] TimestampNs max_staleness_ns() const noexcept;
+    [[nodiscard]] ConsolidatedReference
+    consolidated_reference(TimestampNs sample_timestamp_ns) const noexcept;
 
   private:
     CrossVenueSynchronizerConfig config_;

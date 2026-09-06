@@ -1,5 +1,6 @@
 #include "fairvaluelab/cross_venue.hpp"
 
+#include <cmath>
 #include <stdexcept>
 
 fairvaluelab::CrossVenueSynchronizer::CrossVenueSynchronizer(
@@ -92,4 +93,38 @@ fairvaluelab::CrossVenueSynchronizer::freshness(const VenueId venue_id,
 fairvaluelab::TimestampNs
 fairvaluelab::CrossVenueSynchronizer::max_staleness_ns() const noexcept {
     return config_.max_staleness_ns;
+}
+
+fairvaluelab::ConsolidatedReference
+fairvaluelab::CrossVenueSynchronizer::consolidated_reference(
+    const TimestampNs sample_timestamp_ns) const noexcept {
+    ConsolidatedReference output{};
+    output.sample_timestamp_ns = sample_timestamp_ns;
+    double mid_sum = 0.0;
+    double microprice_sum = 0.0;
+    for (const auto& venue : states_) {
+        const auto venue_freshness = freshness(venue.venue_id, sample_timestamp_ns);
+        if (!venue_freshness.usable || !venue.best_bid_ticks.has_value() ||
+            !venue.best_ask_ticks.has_value() || *venue.best_bid_ticks > *venue.best_ask_ticks) {
+            continue;
+        }
+        ++output.valid_venue_count;
+        if (venue.features.mid_price.has_value() && std::isfinite(*venue.features.mid_price)) {
+            mid_sum += *venue.features.mid_price;
+            ++output.mid_venue_count;
+        }
+        if (venue.features.microprice.has_value() &&
+            std::isfinite(*venue.features.microprice)) {
+            microprice_sum += *venue.features.microprice;
+            ++output.microprice_venue_count;
+        }
+    }
+    if (output.mid_venue_count != 0) {
+        output.mid = mid_sum / static_cast<double>(output.mid_venue_count);
+    }
+    if (output.microprice_venue_count != 0) {
+        output.microprice =
+            microprice_sum / static_cast<double>(output.microprice_venue_count);
+    }
+    return output;
 }

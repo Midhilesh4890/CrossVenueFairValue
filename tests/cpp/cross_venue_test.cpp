@@ -138,6 +138,66 @@ bool test_venue_freshness_boundaries_and_recovery() {
     return true;
 }
 
+bool test_consolidated_reference() {
+    constexpr std::array venues{fairvaluelab::VenueId{10}, fairvaluelab::VenueId{20},
+                                fairvaluelab::VenueId{30}};
+    CrossVenueSynchronizer synchronizer{
+        venues, CrossVenueSynchronizerConfig{.max_staleness_ns = 100}};
+    const auto empty = synchronizer.consolidated_reference(1'000);
+    FVL_CHECK(!empty.mid.has_value());
+    FVL_CHECK(!empty.microprice.has_value());
+    FVL_CHECK(empty.valid_venue_count == 0);
+
+    auto first = features(10, 1'000, 1'000, 101.0);
+    first.microprice = 101.25;
+    FVL_CHECK(synchronizer.update(first) == SynchronizerUpdateStatus::Accepted);
+    const auto one = synchronizer.consolidated_reference(1'000);
+    FVL_CHECK(one.mid == 101.0);
+    FVL_CHECK(one.microprice == 101.25);
+    FVL_CHECK(one.valid_venue_count == 1);
+    FVL_CHECK(one.mid_venue_count == 1);
+    FVL_CHECK(one.microprice_venue_count == 1);
+
+    auto second = features(20, 1'010, 1'010, 103.0);
+    second.microprice = 102.75;
+    FVL_CHECK(synchronizer.update(second) == SynchronizerUpdateStatus::Accepted);
+    const auto two = synchronizer.consolidated_reference(1'050);
+    FVL_CHECK(two.mid == 102.0);
+    FVL_CHECK(two.microprice == 102.0);
+    FVL_CHECK(two.valid_venue_count == 2);
+
+    auto crossed = features(30, 1'020, 1'020, 104.0);
+    crossed.best_bid_ticks = 105;
+    crossed.best_ask_ticks = 103;
+    FVL_CHECK(synchronizer.update(crossed) == SynchronizerUpdateStatus::Accepted);
+    const auto without_crossed = synchronizer.consolidated_reference(1'050);
+    FVL_CHECK(without_crossed.valid_venue_count == 2);
+    FVL_CHECK(without_crossed.mid == 102.0);
+
+    const auto stale = synchronizer.consolidated_reference(1'111);
+    FVL_CHECK(stale.valid_venue_count == 0);
+    FVL_CHECK(!stale.mid.has_value());
+    FVL_CHECK(!stale.microprice.has_value());
+    return true;
+}
+
+bool test_consolidated_missing_values() {
+    constexpr std::array venues{fairvaluelab::VenueId{10}, fairvaluelab::VenueId{20}};
+    CrossVenueSynchronizer synchronizer{venues};
+    auto first = features(10, 100, 100, 101.0);
+    first.microprice.reset();
+    auto second = features(20, 100, 100, 103.0);
+    FVL_CHECK(synchronizer.update(first) == SynchronizerUpdateStatus::Accepted);
+    FVL_CHECK(synchronizer.update(second) == SynchronizerUpdateStatus::Accepted);
+    const auto reference = synchronizer.consolidated_reference(100);
+    FVL_CHECK(reference.valid_venue_count == 2);
+    FVL_CHECK(reference.mid_venue_count == 2);
+    FVL_CHECK(reference.mid == 102.0);
+    FVL_CHECK(reference.microprice_venue_count == 1);
+    FVL_CHECK(reference.microprice == 103.25);
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -152,6 +212,8 @@ int main() {
         TestCase{"configuration validation", test_configuration_validation},
         TestCase{"venue freshness boundaries and recovery",
                  test_venue_freshness_boundaries_and_recovery},
+        TestCase{"consolidated reference", test_consolidated_reference},
+        TestCase{"consolidated missing values", test_consolidated_missing_values},
     };
     for (const auto& test : tests) {
         if (!test.run()) {
