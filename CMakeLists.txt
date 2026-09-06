@@ -98,6 +98,11 @@ target_link_libraries(fvl_order_book_benchmark PRIVATE FairValueLab::order_book)
 fvl_enable_warnings(fvl_order_book_benchmark)
 fvl_enable_sanitizers(fvl_order_book_benchmark)
 
+add_executable(fvl_cross_venue_benchmark cpp/benchmark/cross_venue_benchmark.cpp)
+target_link_libraries(fvl_cross_venue_benchmark PRIVATE FairValueLab::order_book)
+fvl_enable_warnings(fvl_cross_venue_benchmark)
+fvl_enable_sanitizers(fvl_cross_venue_benchmark)
+
 if(BUILD_TESTING)
     add_executable(fvl_order_book_test tests/cpp/order_book_test.cpp)
     target_link_libraries(fvl_order_book_test PRIVATE FairValueLab::order_book)
