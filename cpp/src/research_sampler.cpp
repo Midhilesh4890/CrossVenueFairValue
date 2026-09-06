@@ -1,5 +1,6 @@
 #include "fairvaluelab/research_sampler.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 
@@ -76,7 +77,8 @@ void fairvaluelab::ResearchSampler::append_sample(const TimestampNs sample_times
 }
 
 void fairvaluelab::align_future_targets(const std::span<CrossVenueSample> samples,
-                                        const std::span<const TimestampNs> horizons_ns) {
+                                        const std::span<const TimestampNs> horizons_ns,
+                                        const TimestampNs max_target_delay_ns) {
     for (std::size_t index = 1; index < samples.size(); ++index) {
         if (samples[index].sample_timestamp_ns < samples[index - 1].sample_timestamp_ns) {
             throw std::invalid_argument("samples must be ordered by timestamp");
@@ -128,8 +130,12 @@ void fairvaluelab::align_future_targets(const std::span<CrossVenueSample> sample
 
             auto& target = samples[sample_index].future_targets[horizon_index];
             const auto& future = samples[target_index];
+            const auto target_delay = future.sample_timestamp_ns - target_threshold;
+            if (target_delay > max_target_delay_ns) {
+                continue;
+            }
             target.target_timestamp_ns = future.sample_timestamp_ns;
-            target.target_delay_ns = future.sample_timestamp_ns - target_threshold;
+            target.target_delay_ns = target_delay;
             target.future_consolidated_mid = future.consolidated.mid;
             target.future_consolidated_microprice = future.consolidated.microprice;
             if (target.future_consolidated_mid.has_value() &&
@@ -149,5 +155,27 @@ void fairvaluelab::align_future_targets(const std::span<CrossVenueSample> sample
                                                                                  : 0;
             }
         }
+    }
+}
+
+void fairvaluelab::align_future_targets(const std::span<CrossVenueSample> samples,
+                                        const std::span<const TimestampNs> horizons_ns) {
+    align_future_targets(samples, horizons_ns, std::numeric_limits<TimestampNs>::max());
+}
+
+void fairvaluelab::align_future_targets(std::vector<CrossVenueSample>& samples,
+                                        const std::span<const TimestampNs> horizons_ns,
+                                        const TargetAlignmentConfig config) {
+    align_future_targets(std::span<CrossVenueSample>{samples}, horizons_ns,
+                         config.max_target_delay_ns);
+    if (config.missing_target_policy == MissingTargetPolicy::DiscardRow) {
+        samples.erase(
+            std::remove_if(samples.begin(), samples.end(), [](const CrossVenueSample& sample) {
+                return std::any_of(sample.future_targets.begin(), sample.future_targets.end(),
+                                   [](const FutureFairValueTarget& target) {
+                                       return !target.target_timestamp_ns.has_value();
+                                   });
+            }),
+            samples.end());
     }
 }

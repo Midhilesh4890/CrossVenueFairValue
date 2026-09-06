@@ -2,6 +2,7 @@
 
 #include "fairvaluelab/cross_venue.hpp"
 
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -28,8 +29,24 @@ struct CrossVenueSample {
     std::vector<FutureFairValueTarget> future_targets;
 };
 
+enum class MissingTargetPolicy : std::uint8_t {
+    KeepUndefined,
+    DiscardRow,
+};
+
+struct TargetAlignmentConfig {
+    TimestampNs max_target_delay_ns{std::numeric_limits<TimestampNs>::max()};
+    MissingTargetPolicy missing_target_policy{MissingTargetPolicy::KeepUndefined};
+};
+
 void align_future_targets(std::span<CrossVenueSample> samples,
                           std::span<const TimestampNs> horizons_ns);
+void align_future_targets(std::span<CrossVenueSample> samples,
+                          std::span<const TimestampNs> horizons_ns,
+                          TimestampNs max_target_delay_ns);
+void align_future_targets(std::vector<CrossVenueSample>& samples,
+                          std::span<const TimestampNs> horizons_ns,
+                          TargetAlignmentConfig config);
 
 struct ResearchSamplerConfig {
     SampleKind sample_kind{SampleKind::Clock};

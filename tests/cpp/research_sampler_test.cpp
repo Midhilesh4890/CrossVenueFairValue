@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
@@ -183,6 +184,77 @@ bool test_target_configuration_validation() {
     return true;
 }
 
+bool test_first_target_at_or_after_horizon() {
+    std::vector samples{
+        sample(100, 100.0, 100.0),
+        sample(109, 10'000.0, 10'000.0),
+        sample(115, 105.0, 105.0),
+        sample(130, 110.0, 110.0),
+    };
+    constexpr std::array horizons{10ULL};
+    fairvaluelab::align_future_targets(
+        samples, horizons,
+        fairvaluelab::TargetAlignmentConfig{
+            .max_target_delay_ns = 5,
+            .missing_target_policy = fairvaluelab::MissingTargetPolicy::KeepUndefined,
+        });
+    FVL_CHECK(samples[0].future_targets[0].target_timestamp_ns == 115);
+    FVL_CHECK(samples[0].future_targets[0].target_delay_ns == 5);
+    FVL_CHECK(samples[0].future_targets[0].future_consolidated_mid == 105.0);
+    FVL_CHECK(samples[0].future_targets[0].mid_return == 5.0);
+    FVL_CHECK(!samples[1].future_targets[0].target_timestamp_ns.has_value());
+    return true;
+}
+
+bool test_maximum_target_delay_and_missing_policy() {
+    constexpr std::array horizons{10ULL};
+    auto kept = std::vector{
+        sample(100, 100.0, 100.0),
+        sample(115, 105.0, 105.0),
+        sample(130, 110.0, 110.0),
+    };
+    fairvaluelab::align_future_targets(
+        kept, horizons,
+        fairvaluelab::TargetAlignmentConfig{
+            .max_target_delay_ns = 4,
+            .missing_target_policy = fairvaluelab::MissingTargetPolicy::KeepUndefined,
+        });
+    FVL_CHECK(kept.size() == 3);
+    FVL_CHECK(!kept[0].future_targets[0].target_timestamp_ns.has_value());
+
+    auto discarded = std::vector{
+        sample(100, 100.0, 100.0),
+        sample(115, 105.0, 105.0),
+        sample(130, 110.0, 110.0),
+    };
+    fairvaluelab::align_future_targets(
+        discarded, horizons,
+        fairvaluelab::TargetAlignmentConfig{
+            .max_target_delay_ns = 5,
+            .missing_target_policy = fairvaluelab::MissingTargetPolicy::DiscardRow,
+        });
+    FVL_CHECK(discarded.size() == 2);
+    FVL_CHECK(discarded[0].sample_timestamp_ns == 100);
+    FVL_CHECK(discarded[1].sample_timestamp_ns == 115);
+    return true;
+}
+
+bool test_target_alignment_overflow_and_invalid_future_state() {
+    constexpr auto maximum = std::numeric_limits<std::uint64_t>::max();
+    std::vector samples{
+        sample(100, 100.0, 100.0),
+        sample(111, std::nullopt, std::nullopt),
+        sample(114, 104.0, 104.0),
+        sample(maximum - 5, 200.0, 200.0),
+    };
+    constexpr std::array horizons{10ULL};
+    fairvaluelab::align_future_targets(samples, horizons);
+    FVL_CHECK(samples[0].future_targets[0].target_timestamp_ns == 114);
+    FVL_CHECK(samples[0].future_targets[0].target_delay_ns == 4);
+    FVL_CHECK(!samples.back().future_targets[0].target_timestamp_ns.has_value());
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -197,6 +269,11 @@ int main() {
         TestCase{"configurable clock intervals", test_configurable_clock_intervals},
         TestCase{"multiple future target horizons", test_multiple_future_target_horizons},
         TestCase{"target configuration validation", test_target_configuration_validation},
+        TestCase{"first target at or after horizon", test_first_target_at_or_after_horizon},
+        TestCase{"maximum target delay and missing policy",
+                 test_maximum_target_delay_and_missing_policy},
+        TestCase{"target alignment overflow and invalid future state",
+                 test_target_alignment_overflow_and_invalid_future_state},
     };
     for (const auto& test : tests) {
         if (!test.run()) {
