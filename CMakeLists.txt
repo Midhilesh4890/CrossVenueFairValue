@@ -158,6 +158,12 @@ if(BUILD_TESTING)
     fvl_enable_sanitizers(fvl_cross_venue_test)
     add_test(NAME cross_venue COMMAND fvl_cross_venue_test)
 
+    add_executable(fvl_cross_venue_allocation_test tests/cpp/cross_venue_allocation_test.cpp)
+    target_link_libraries(fvl_cross_venue_allocation_test PRIVATE FairValueLab::order_book)
+    fvl_enable_warnings(fvl_cross_venue_allocation_test)
+    fvl_enable_sanitizers(fvl_cross_venue_allocation_test)
+    add_test(NAME cross_venue_allocation COMMAND fvl_cross_venue_allocation_test)
+
     add_executable(fvl_research_sampler_test tests/cpp/research_sampler_test.cpp)
     target_link_libraries(fvl_research_sampler_test PRIVATE FairValueLab::order_book)
     fvl_enable_warnings(fvl_research_sampler_test)
