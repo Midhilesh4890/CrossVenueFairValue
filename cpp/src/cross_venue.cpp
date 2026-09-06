@@ -128,3 +128,51 @@ fairvaluelab::CrossVenueSynchronizer::consolidated_reference(
     }
     return output;
 }
+
+
+bool fairvaluelab::CrossVenueSynchronizer::venue_features(
+    const TimestampNs sample_timestamp_ns, const std::span<VenueCrossFeatures> output) const noexcept {
+    if (output.size() != states_.size()) {
+        return false;
+    }
+    const auto reference = consolidated_reference(sample_timestamp_ns);
+    for (std::size_t index = 0; index < states_.size(); ++index) {
+        const auto& state = states_[index];
+        const auto venue_freshness = freshness(state.venue_id, sample_timestamp_ns);
+        auto& features = output[index];
+        features = {};
+        features.venue_id = state.venue_id;
+        features.observed = venue_freshness.observed;
+        features.fresh = venue_freshness.usable;
+        features.age_ns = venue_freshness.age_ns;
+        if (!venue_freshness.usable) {
+            continue;
+        }
+
+        const auto& source = state.features;
+        if (source.mid_price.has_value() && reference.mid.has_value()) {
+            features.mid_minus_consolidated_mid = *source.mid_price - *reference.mid;
+        }
+        if (source.microprice.has_value() && reference.microprice.has_value()) {
+            features.microprice_minus_consolidated_microprice =
+                *source.microprice - *reference.microprice;
+        }
+        features.spread_ticks = source.spread_ticks;
+        features.imbalance_l1 = source.imbalance_l1;
+        features.imbalance_l3 = source.imbalance_l3;
+        features.imbalance_l5 = source.imbalance_l5;
+        features.bid_depth = source.bid_depth;
+        features.ask_depth = source.ask_depth;
+        features.ofi_event_window = source.ofi_event_window;
+        features.ofi_time_window = source.ofi_time_window;
+        features.multi_level_ofi_event_window = source.multi_level_ofi_event_window;
+        features.multi_level_ofi_time_window = source.multi_level_ofi_time_window;
+        features.signed_trade_volume_event_window = source.signed_trade_volume_event_window;
+        features.signed_trade_volume_time_window = source.signed_trade_volume_time_window;
+    }
+    return true;
+}
+
+std::size_t fairvaluelab::CrossVenueSynchronizer::venue_count() const noexcept {
+    return states_.size();
+}

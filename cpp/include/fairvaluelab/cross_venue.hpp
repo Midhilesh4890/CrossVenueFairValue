@@ -46,6 +46,27 @@ struct ConsolidatedReference {
     std::size_t microprice_venue_count{};
 };
 
+struct VenueCrossFeatures {
+    VenueId venue_id{};
+    bool observed{};
+    bool fresh{};
+    std::optional<TimestampNs> age_ns;
+    std::optional<double> mid_minus_consolidated_mid;
+    std::optional<double> microprice_minus_consolidated_microprice;
+    std::optional<PriceTicks> spread_ticks;
+    std::optional<double> imbalance_l1;
+    std::optional<double> imbalance_l3;
+    std::optional<double> imbalance_l5;
+    std::optional<Quantity> bid_depth;
+    std::optional<Quantity> ask_depth;
+    std::optional<double> ofi_event_window;
+    std::optional<double> ofi_time_window;
+    std::optional<double> multi_level_ofi_event_window;
+    std::optional<double> multi_level_ofi_time_window;
+    std::optional<double> signed_trade_volume_event_window;
+    std::optional<double> signed_trade_volume_time_window;
+};
+
 class CrossVenueSynchronizer {
   public:
     explicit CrossVenueSynchronizer(
@@ -62,6 +83,9 @@ class CrossVenueSynchronizer {
     [[nodiscard]] TimestampNs max_staleness_ns() const noexcept;
     [[nodiscard]] ConsolidatedReference
     consolidated_reference(TimestampNs sample_timestamp_ns) const noexcept;
+    [[nodiscard]] bool venue_features(TimestampNs sample_timestamp_ns,
+                                      std::span<VenueCrossFeatures> output) const noexcept;
+    [[nodiscard]] std::size_t venue_count() const noexcept;
 
   private:
     CrossVenueSynchronizerConfig config_;

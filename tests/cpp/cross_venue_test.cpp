@@ -198,6 +198,64 @@ bool test_consolidated_missing_values() {
     return true;
 }
 
+bool test_per_venue_cross_features() {
+    constexpr std::array venues{fairvaluelab::VenueId{10}, fairvaluelab::VenueId{20},
+                                fairvaluelab::VenueId{30}};
+    CrossVenueSynchronizer synchronizer{
+        venues, CrossVenueSynchronizerConfig{.max_staleness_ns = 100}};
+    auto first = features(10, 1'000, 1'000, 101.0);
+    first.imbalance_l3 = 0.2;
+    first.imbalance_l5 = 0.1;
+    first.bid_depth = 40;
+    first.ask_depth = 30;
+    first.ofi_event_window = 8.0;
+    first.ofi_time_window = 5.0;
+    first.multi_level_ofi_event_window = 4.0;
+    first.multi_level_ofi_time_window = 3.0;
+    first.signed_trade_volume_event_window = 7.0;
+    first.signed_trade_volume_time_window = 2.0;
+    auto second = features(20, 1'050, 1'050, 103.0);
+    FVL_CHECK(synchronizer.update(first) == SynchronizerUpdateStatus::Accepted);
+    FVL_CHECK(synchronizer.update(second) == SynchronizerUpdateStatus::Accepted);
+
+    std::array<fairvaluelab::VenueCrossFeatures, 3> output{};
+    FVL_CHECK(synchronizer.venue_count() == output.size());
+    FVL_CHECK(synchronizer.venue_features(1'075, output));
+    FVL_CHECK(output[0].venue_id == 10);
+    FVL_CHECK(output[0].fresh);
+    FVL_CHECK(output[0].age_ns == 75);
+    FVL_CHECK(output[0].mid_minus_consolidated_mid == -1.0);
+    FVL_CHECK(output[0].microprice_minus_consolidated_microprice == -1.0);
+    FVL_CHECK(output[0].spread_ticks == 2);
+    FVL_CHECK(output[0].imbalance_l1 == 0.25);
+    FVL_CHECK(output[0].imbalance_l3 == 0.2);
+    FVL_CHECK(output[0].imbalance_l5 == 0.1);
+    FVL_CHECK(output[0].bid_depth == 40);
+    FVL_CHECK(output[0].ask_depth == 30);
+    FVL_CHECK(output[0].ofi_event_window == 8.0);
+    FVL_CHECK(output[0].ofi_time_window == 5.0);
+    FVL_CHECK(output[0].multi_level_ofi_event_window == 4.0);
+    FVL_CHECK(output[0].multi_level_ofi_time_window == 3.0);
+    FVL_CHECK(output[0].signed_trade_volume_event_window == 7.0);
+    FVL_CHECK(output[0].signed_trade_volume_time_window == 2.0);
+    FVL_CHECK(output[1].mid_minus_consolidated_mid == 1.0);
+    FVL_CHECK(!output[2].observed);
+    FVL_CHECK(!output[2].fresh);
+    FVL_CHECK(!output[2].age_ns.has_value());
+    FVL_CHECK(!output[2].ofi_event_window.has_value());
+
+    FVL_CHECK(synchronizer.venue_features(1'101, output));
+    FVL_CHECK(!output[0].fresh);
+    FVL_CHECK(output[0].age_ns == 101);
+    FVL_CHECK(!output[0].spread_ticks.has_value());
+    FVL_CHECK(!output[0].mid_minus_consolidated_mid.has_value());
+    FVL_CHECK(output[1].fresh);
+
+    std::array<fairvaluelab::VenueCrossFeatures, 2> wrong_size{};
+    FVL_CHECK(!synchronizer.venue_features(1'101, wrong_size));
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -214,6 +272,7 @@ int main() {
                  test_venue_freshness_boundaries_and_recovery},
         TestCase{"consolidated reference", test_consolidated_reference},
         TestCase{"consolidated missing values", test_consolidated_missing_values},
+        TestCase{"per-venue cross features", test_per_venue_cross_features},
     };
     for (const auto& test : tests) {
         if (!test.run()) {
