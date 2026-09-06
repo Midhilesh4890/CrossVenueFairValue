@@ -316,6 +316,61 @@ bool test_temporal_invariant_rejections() {
     return true;
 }
 
+bool test_rejected_sequences_do_not_emit_event_samples() {
+    auto sampler = make_sampler(SampleKind::Event, 100);
+    std::vector<CrossVenueSample> output;
+    FVL_CHECK(sampler.process(update(1, 1, Side::Bid, 100, 10, 100), output).accepted());
+    FVL_CHECK(output.size() == 1);
+    FVL_CHECK(sampler.process(update(1, 1, Side::Bid, 100, 999, 110), output).status ==
+              fairvaluelab::UpdateStatus::Duplicate);
+    FVL_CHECK(sampler.process(update(1, 0, Side::Bid, 100, 999, 120), output).status ==
+              fairvaluelab::UpdateStatus::Stale);
+    FVL_CHECK(sampler.process(update(1, 3, Side::Ask, 102, 10, 130), output).status ==
+              fairvaluelab::UpdateStatus::SequenceGap);
+    FVL_CHECK(output.size() == 1);
+    FVL_CHECK(sampler.process(update(1, 2, Side::Ask, 102, 10, 140), output).accepted());
+    FVL_CHECK(output.size() == 2);
+    FVL_CHECK(output.back().consolidated.mid == 101.0);
+    return true;
+}
+
+bool test_out_of_order_receipt_time_is_rejected_without_state_change() {
+    auto sampler = make_sampler(SampleKind::Event, 100);
+    std::vector<CrossVenueSample> output;
+    FVL_CHECK(sampler.process(update(1, 1, Side::Bid, 100, 10, 100), output).accepted());
+    bool rejected = false;
+    try {
+        static_cast<void>(sampler.process(update(1, 2, Side::Ask, 102, 10, 99), output));
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    FVL_CHECK(rejected);
+    FVL_CHECK(output.size() == 1);
+    FVL_CHECK(sampler.process(update(1, 2, Side::Ask, 102, 10, 101), output).accepted());
+    FVL_CHECK(output.size() == 2);
+    FVL_CHECK(output.back().sample_timestamp_ns == 101);
+    FVL_CHECK(output.back().consolidated.mid == 101.0);
+    return true;
+}
+
+bool test_receipt_time_controls_alignment() {
+    auto sampler = make_sampler(SampleKind::Event, 100);
+    std::vector<CrossVenueSample> output;
+    auto first = update(1, 1, Side::Bid, 100, 10, 100);
+    first.exchange_timestamp_ns = 10'000;
+    auto second = update(1, 2, Side::Ask, 102, 10, 110);
+    second.exchange_timestamp_ns = 1;
+    FVL_CHECK(sampler.process(first, output).accepted());
+    FVL_CHECK(sampler.process(second, output).accepted());
+    FVL_CHECK(output.size() == 2);
+    FVL_CHECK(output[0].sample_timestamp_ns == 100);
+    FVL_CHECK(output[1].sample_timestamp_ns == 110);
+    FVL_CHECK(output[1].venue_features[0].latest_exchange_timestamp_ns == 1);
+    FVL_CHECK(output[1].venue_features[0].latest_local_receipt_timestamp_ns == 110);
+    FVL_CHECK(fairvaluelab::validate_temporal_invariants(output));
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -338,6 +393,11 @@ int main() {
         TestCase{"future data never enters current features",
                  test_future_data_never_enters_current_features},
         TestCase{"temporal invariant rejections", test_temporal_invariant_rejections},
+        TestCase{"rejected sequences do not emit event samples",
+                 test_rejected_sequences_do_not_emit_event_samples},
+        TestCase{"out-of-order receipt time is rejected without state change",
+                 test_out_of_order_receipt_time_is_rejected_without_state_change},
+        TestCase{"receipt time controls alignment", test_receipt_time_controls_alignment},
     };
     for (const auto& test : tests) {
         if (!test.run()) {
