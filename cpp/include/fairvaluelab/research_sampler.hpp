@@ -2,7 +2,9 @@
 
 #include "fairvaluelab/cross_venue.hpp"
 
+#include <cstdint>
 #include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 

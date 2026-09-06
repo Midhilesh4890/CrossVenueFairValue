@@ -48,6 +48,7 @@ add_library(
     cpp/src/normalized_csv.cpp
     cpp/src/order_book.cpp
     cpp/src/research_sampler.cpp
+    cpp/src/research_dataset.cpp
     cpp/src/venue.cpp
     cpp/src/venue_adapters.cpp
 )
@@ -86,6 +87,11 @@ add_executable(fvl_features cpp/src/features_main.cpp)
 target_link_libraries(fvl_features PRIVATE FairValueLab::order_book)
 fvl_enable_warnings(fvl_features)
 fvl_enable_sanitizers(fvl_features)
+
+add_executable(fvl_dataset cpp/src/dataset_main.cpp)
+target_link_libraries(fvl_dataset PRIVATE FairValueLab::order_book)
+fvl_enable_warnings(fvl_dataset)
+fvl_enable_sanitizers(fvl_dataset)
 
 add_executable(fvl_order_book_benchmark cpp/benchmark/order_book_benchmark.cpp)
 target_link_libraries(fvl_order_book_benchmark PRIVATE FairValueLab::order_book)
@@ -157,4 +163,10 @@ if(BUILD_TESTING)
     fvl_enable_warnings(fvl_research_sampler_test)
     fvl_enable_sanitizers(fvl_research_sampler_test)
     add_test(NAME research_sampler COMMAND fvl_research_sampler_test)
+
+    add_executable(fvl_research_dataset_test tests/cpp/research_dataset_test.cpp)
+    target_link_libraries(fvl_research_dataset_test PRIVATE FairValueLab::order_book)
+    fvl_enable_warnings(fvl_research_dataset_test)
+    fvl_enable_sanitizers(fvl_research_dataset_test)
+    add_test(NAME research_dataset COMMAND fvl_research_dataset_test)
 endif()
