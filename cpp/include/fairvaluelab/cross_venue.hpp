@@ -24,6 +24,7 @@ struct CrossVenueVenueState {
     TimestampNs latest_exchange_timestamp_ns{};
     std::optional<PriceTicks> best_bid_ticks;
     std::optional<PriceTicks> best_ask_ticks;
+    std::int8_t last_mid_move{};
     FeatureSet features;
 };
 
@@ -65,6 +66,7 @@ struct VenueCrossFeatures {
     std::optional<double> multi_level_ofi_time_window;
     std::optional<double> signed_trade_volume_event_window;
     std::optional<double> signed_trade_volume_time_window;
+    std::optional<std::int8_t> last_mid_move;
 };
 
 struct VenuePair {
@@ -85,6 +87,8 @@ struct PairwiseCrossFeatures {
     std::optional<double> signed_trade_volume_event_window_difference;
     std::optional<double> signed_trade_volume_time_window_difference;
     std::optional<std::int64_t> receipt_timestamp_difference_ns;
+    std::optional<std::int64_t> exchange_timestamp_difference_ns;
+    std::optional<std::int16_t> last_mid_move_difference;
 };
 
 class CrossVenueSynchronizer {

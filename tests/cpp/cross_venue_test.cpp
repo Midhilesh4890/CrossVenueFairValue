@@ -337,6 +337,52 @@ bool test_pair_configuration_validation() {
     return true;
 }
 
+bool test_lead_lag_and_mid_move_features() {
+    constexpr std::array venues{fairvaluelab::VenueId{10}, fairvaluelab::VenueId{20}};
+    constexpr std::array pairs{VenuePair{10, 20}};
+    CrossVenueSynchronizer synchronizer{venues, pairs};
+    FVL_CHECK(synchronizer.update(features(10, 1'000, 1'000, 101.0)) ==
+              SynchronizerUpdateStatus::Accepted);
+    FVL_CHECK(synchronizer.update(features(20, 1'010, 1'010, 102.0)) ==
+              SynchronizerUpdateStatus::Accepted);
+
+    std::array<fairvaluelab::PairwiseCrossFeatures, 1> pair_output{};
+    std::array<fairvaluelab::VenueCrossFeatures, 2> venue_output{};
+    FVL_CHECK(synchronizer.pairwise_features(1'010, pair_output));
+    FVL_CHECK(pair_output[0].receipt_timestamp_difference_ns == -10);
+    FVL_CHECK(pair_output[0].exchange_timestamp_difference_ns == -10);
+    FVL_CHECK(pair_output[0].last_mid_move_difference == 0);
+
+    auto first_up = features(10, 1'020, 1'020, 103.0);
+    FVL_CHECK(synchronizer.update(first_up) == SynchronizerUpdateStatus::Accepted);
+    FVL_CHECK(synchronizer.venue_features(1'020, venue_output));
+    FVL_CHECK(venue_output[0].last_mid_move == 1);
+    FVL_CHECK(venue_output[1].last_mid_move == 0);
+    FVL_CHECK(synchronizer.pairwise_features(1'020, pair_output));
+    FVL_CHECK(pair_output[0].last_mid_move_difference == 1);
+
+    auto clock = first_up;
+    clock.sample_kind = fairvaluelab::SampleKind::Clock;
+    clock.sample_timestamp_ns = 1'030;
+    FVL_CHECK(synchronizer.update(clock) == SynchronizerUpdateStatus::Accepted);
+    FVL_CHECK(synchronizer.venue_features(1'030, venue_output));
+    FVL_CHECK(venue_output[0].last_mid_move == 1);
+
+    auto second_down = features(20, 1'040, 1'040, 100.0);
+    FVL_CHECK(synchronizer.update(second_down) == SynchronizerUpdateStatus::Accepted);
+    FVL_CHECK(synchronizer.pairwise_features(1'040, pair_output));
+    FVL_CHECK(pair_output[0].last_mid_move_difference == 2);
+
+    auto missing_exchange = second_down;
+    missing_exchange.exchange_timestamp_ns = 0;
+    missing_exchange.local_receipt_timestamp_ns = 1'050;
+    missing_exchange.sample_timestamp_ns = 1'050;
+    FVL_CHECK(synchronizer.update(missing_exchange) == SynchronizerUpdateStatus::Accepted);
+    FVL_CHECK(synchronizer.pairwise_features(1'050, pair_output));
+    FVL_CHECK(!pair_output[0].exchange_timestamp_difference_ns.has_value());
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -356,6 +402,7 @@ int main() {
         TestCase{"per-venue cross features", test_per_venue_cross_features},
         TestCase{"pairwise cross features", test_pairwise_cross_features},
         TestCase{"pair configuration validation", test_pair_configuration_validation},
+        TestCase{"lead-lag and mid-move features", test_lead_lag_and_mid_move_features},
     };
     for (const auto& test : tests) {
         if (!test.run()) {

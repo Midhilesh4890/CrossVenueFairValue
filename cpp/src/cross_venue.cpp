@@ -87,6 +87,18 @@ fairvaluelab::CrossVenueSynchronizer::update(const FeatureSet& features) noexcep
              features.local_receipt_timestamp_ns < state.latest_local_receipt_timestamp_ns)) {
             return SynchronizerUpdateStatus::OutOfOrder;
         }
+        if (features.sample_kind == SampleKind::Event) {
+            state.last_mid_move = 0;
+            if (state.observed && state.features.mid_price.has_value() &&
+                features.mid_price.has_value() && std::isfinite(*state.features.mid_price) &&
+                std::isfinite(*features.mid_price)) {
+                if (*features.mid_price > *state.features.mid_price) {
+                    state.last_mid_move = 1;
+                } else if (*features.mid_price < *state.features.mid_price) {
+                    state.last_mid_move = -1;
+                }
+            }
+        }
         state.observed = true;
         state.latest_local_receipt_timestamp_ns = features.local_receipt_timestamp_ns;
         state.latest_exchange_timestamp_ns = features.exchange_timestamp_ns;
@@ -215,6 +227,7 @@ bool fairvaluelab::CrossVenueSynchronizer::venue_features(
         features.multi_level_ofi_time_window = source.multi_level_ofi_time_window;
         features.signed_trade_volume_event_window = source.signed_trade_volume_event_window;
         features.signed_trade_volume_time_window = source.signed_trade_volume_time_window;
+        features.last_mid_move = state.last_mid_move;
     }
     return true;
 }
@@ -266,6 +279,13 @@ bool fairvaluelab::CrossVenueSynchronizer::pairwise_features(
             second.features.signed_trade_volume_time_window;
         features.receipt_timestamp_difference_ns = timestamp_difference(
             first.latest_local_receipt_timestamp_ns, second.latest_local_receipt_timestamp_ns);
+        if (first.latest_exchange_timestamp_ns != 0 && second.latest_exchange_timestamp_ns != 0) {
+            features.exchange_timestamp_difference_ns = timestamp_difference(
+                first.latest_exchange_timestamp_ns, second.latest_exchange_timestamp_ns);
+        }
+        features.last_mid_move_difference =
+            static_cast<std::int16_t>(first.last_mid_move) -
+            static_cast<std::int16_t>(second.last_mid_move);
     }
     return true;
 }
