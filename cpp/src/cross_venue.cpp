@@ -203,6 +203,13 @@ bool fairvaluelab::CrossVenueSynchronizer::venue_features(
         features.observed = venue_freshness.observed;
         features.fresh = venue_freshness.usable;
         features.age_ns = venue_freshness.age_ns;
+        if (venue_freshness.observed) {
+            features.latest_local_receipt_timestamp_ns =
+                state.latest_local_receipt_timestamp_ns;
+            if (state.latest_exchange_timestamp_ns != 0) {
+                features.latest_exchange_timestamp_ns = state.latest_exchange_timestamp_ns;
+            }
+        }
         if (!venue_freshness.usable) {
             continue;
         }

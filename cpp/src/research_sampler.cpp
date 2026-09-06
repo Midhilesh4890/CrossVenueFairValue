@@ -179,3 +179,87 @@ void fairvaluelab::align_future_targets(std::vector<CrossVenueSample>& samples,
             samples.end());
     }
 }
+
+bool fairvaluelab::validate_temporal_invariants(
+    const std::span<const CrossVenueSample> samples) noexcept {
+    for (std::size_t sample_index = 0; sample_index < samples.size(); ++sample_index) {
+        const auto& sample = samples[sample_index];
+        if ((sample_index != 0 &&
+             sample.sample_timestamp_ns < samples[sample_index - 1].sample_timestamp_ns) ||
+            sample.consolidated.sample_timestamp_ns != sample.sample_timestamp_ns) {
+            return false;
+        }
+        for (const auto& venue : sample.venue_features) {
+            if (!venue.observed) {
+                if (venue.latest_local_receipt_timestamp_ns.has_value() || venue.age_ns.has_value()) {
+                    return false;
+                }
+                continue;
+            }
+            if (!venue.latest_local_receipt_timestamp_ns.has_value() ||
+                *venue.latest_local_receipt_timestamp_ns > sample.sample_timestamp_ns) {
+                return false;
+            }
+            const auto expected_age =
+                sample.sample_timestamp_ns - *venue.latest_local_receipt_timestamp_ns;
+            if (!venue.age_ns.has_value() || *venue.age_ns != expected_age) {
+                return false;
+            }
+        }
+        for (const auto& target : sample.future_targets) {
+            if (target.horizon_ns == 0) {
+                return false;
+            }
+            if (!target.target_timestamp_ns.has_value()) {
+                if (target.target_delay_ns.has_value() ||
+                    target.future_consolidated_mid.has_value() ||
+                    target.future_consolidated_microprice.has_value() ||
+                    target.mid_return.has_value() || target.microprice_return.has_value() ||
+                    target.mid_direction.has_value() || target.microprice_direction.has_value()) {
+                    return false;
+                }
+                continue;
+            }
+            if (sample.sample_timestamp_ns >
+                std::numeric_limits<TimestampNs>::max() - target.horizon_ns) {
+                return false;
+            }
+            const auto threshold = sample.sample_timestamp_ns + target.horizon_ns;
+            if (*target.target_timestamp_ns < threshold || !target.target_delay_ns.has_value() ||
+                *target.target_delay_ns != *target.target_timestamp_ns - threshold ||
+                (!target.future_consolidated_mid.has_value() &&
+                 !target.future_consolidated_microprice.has_value())) {
+                return false;
+            }
+            if (target.future_consolidated_mid.has_value() && sample.consolidated.mid.has_value()) {
+                const auto expected_return =
+                    *target.future_consolidated_mid - *sample.consolidated.mid;
+                const std::int8_t expected_direction = expected_return > 0.0   ? 1
+                                                       : expected_return < 0.0 ? -1
+                                                                               : 0;
+                if (target.mid_return != expected_return ||
+                    target.mid_direction != expected_direction) {
+                    return false;
+                }
+            } else if (target.mid_return.has_value() || target.mid_direction.has_value()) {
+                return false;
+            }
+            if (target.future_consolidated_microprice.has_value() &&
+                sample.consolidated.microprice.has_value()) {
+                const auto expected_return = *target.future_consolidated_microprice -
+                                             *sample.consolidated.microprice;
+                const std::int8_t expected_direction = expected_return > 0.0   ? 1
+                                                       : expected_return < 0.0 ? -1
+                                                                               : 0;
+                if (target.microprice_return != expected_return ||
+                    target.microprice_direction != expected_direction) {
+                    return false;
+                }
+            } else if (target.microprice_return.has_value() ||
+                       target.microprice_direction.has_value()) {
+                return false;
+            }
+        }
+    }
+    return true;
+}

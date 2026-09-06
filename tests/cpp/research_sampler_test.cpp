@@ -255,6 +255,67 @@ bool test_target_alignment_overflow_and_invalid_future_state() {
     return true;
 }
 
+bool test_future_data_never_enters_current_features() {
+    auto sampler = make_sampler(SampleKind::Event, 100);
+    std::vector<CrossVenueSample> output;
+    FVL_CHECK(sampler.process(update(1, 1, Side::Bid, 100, 10, 100), output).accepted());
+    FVL_CHECK(sampler.process(update(1, 2, Side::Ask, 10'000, 10, 105), output).accepted());
+    FVL_CHECK(sampler.process(update(1, 3, Side::Ask, 102, 10, 110), output).accepted());
+    FVL_CHECK(sampler.process(update(2, 1, Side::Bid, 200, 20, 120), output).accepted());
+    FVL_CHECK(sampler.process(update(2, 2, Side::Ask, 204, 20, 130), output).accepted());
+    FVL_CHECK(output.back().sample_timestamp_ns == 130);
+    FVL_CHECK(output.back().consolidated.mid == 151.5);
+    const auto current_row_index = output.size() - 1;
+
+    FVL_CHECK(sampler.process(update(1, 4, Side::Ask, 102, 0, 200), output).accepted());
+    FVL_CHECK(output.back().consolidated.mid == 2'626.0);
+    constexpr std::array horizons{50ULL};
+    fairvaluelab::align_future_targets(output, horizons);
+
+    const auto& current = output[current_row_index];
+    FVL_CHECK(current.sample_timestamp_ns == 130);
+    FVL_CHECK(current.consolidated.mid == 151.5);
+    FVL_CHECK(current.future_targets[0].target_timestamp_ns == 200);
+    FVL_CHECK(current.future_targets[0].future_consolidated_mid == 2'626.0);
+    FVL_CHECK(current.future_targets[0].mid_return == 2'474.5);
+    FVL_CHECK(fairvaluelab::validate_temporal_invariants(output));
+    for (const auto& row : output) {
+        for (const auto& venue : row.venue_features) {
+            if (venue.latest_local_receipt_timestamp_ns.has_value()) {
+                FVL_CHECK(*venue.latest_local_receipt_timestamp_ns <= row.sample_timestamp_ns);
+            }
+        }
+    }
+    return true;
+}
+
+bool test_temporal_invariant_rejections() {
+    auto invalid_feature = sample(100, 100.0, 100.0);
+    fairvaluelab::VenueCrossFeatures venue;
+    venue.observed = true;
+    venue.age_ns = 0;
+    venue.latest_local_receipt_timestamp_ns = 101;
+    invalid_feature.venue_features.push_back(venue);
+    const std::array invalid_feature_rows{invalid_feature};
+    FVL_CHECK(!fairvaluelab::validate_temporal_invariants(invalid_feature_rows));
+
+    auto invalid_target = sample(100, 100.0, 100.0);
+    fairvaluelab::FutureFairValueTarget target;
+    target.horizon_ns = 10;
+    target.target_timestamp_ns = 109;
+    target.target_delay_ns = 0;
+    target.future_consolidated_mid = 101.0;
+    target.mid_return = 1.0;
+    target.mid_direction = 1;
+    invalid_target.future_targets.push_back(target);
+    const std::array invalid_target_rows{invalid_target};
+    FVL_CHECK(!fairvaluelab::validate_temporal_invariants(invalid_target_rows));
+
+    const std::array unordered_rows{sample(101, 101.0, 101.0), sample(100, 100.0, 100.0)};
+    FVL_CHECK(!fairvaluelab::validate_temporal_invariants(unordered_rows));
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -274,6 +335,9 @@ int main() {
                  test_maximum_target_delay_and_missing_policy},
         TestCase{"target alignment overflow and invalid future state",
                  test_target_alignment_overflow_and_invalid_future_state},
+        TestCase{"future data never enters current features",
+                 test_future_data_never_enters_current_features},
+        TestCase{"temporal invariant rejections", test_temporal_invariant_rejections},
     };
     for (const auto& test : tests) {
         if (!test.run()) {

@@ -47,6 +47,8 @@ void align_future_targets(std::span<CrossVenueSample> samples,
 void align_future_targets(std::vector<CrossVenueSample>& samples,
                           std::span<const TimestampNs> horizons_ns,
                           TargetAlignmentConfig config);
+[[nodiscard]] bool
+validate_temporal_invariants(std::span<const CrossVenueSample> samples) noexcept;
 
 struct ResearchSamplerConfig {
     SampleKind sample_kind{SampleKind::Clock};

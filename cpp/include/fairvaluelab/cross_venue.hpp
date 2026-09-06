@@ -52,6 +52,8 @@ struct VenueCrossFeatures {
     bool observed{};
     bool fresh{};
     std::optional<TimestampNs> age_ns;
+    std::optional<TimestampNs> latest_local_receipt_timestamp_ns;
+    std::optional<TimestampNs> latest_exchange_timestamp_ns;
     std::optional<double> mid_minus_consolidated_mid;
     std::optional<double> microprice_minus_consolidated_microprice;
     std::optional<PriceTicks> spread_ticks;
