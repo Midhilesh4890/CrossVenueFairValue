@@ -142,7 +142,7 @@ class FeatureEmitter {
         bool initialized{};
         TimestampNs exchange_timestamp_ns{};
         TimestampNs local_receipt_timestamp_ns{};
-        TimestampNs next_clock_timestamp_ns{};
+        std::optional<TimestampNs> next_clock_timestamp_ns;
         FlowBuffer<OrderFlow> order_flow;
         FlowBuffer<TradeFlow> trade_flow;
     };

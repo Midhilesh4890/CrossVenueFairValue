@@ -237,6 +237,9 @@ fairvaluelab::ResearchDatasetReport fairvaluelab::generate_research_dataset_csv(
         throw std::runtime_error("normalized log contains no events");
     }
     std::sort(venue_ids.begin(), venue_ids.end());
+    if (venue_ids.size() > config.sampler.feature_emitter.venue_capacity) {
+        throw std::runtime_error("normalized log exceeds configured venue capacity");
+    }
 
     std::vector<VenuePair> pairs;
     pairs.reserve(venue_ids.size() * (venue_ids.size() - 1) / 2);

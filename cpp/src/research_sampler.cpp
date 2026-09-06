@@ -166,6 +166,10 @@ void fairvaluelab::align_future_targets(const std::span<CrossVenueSample> sample
 void fairvaluelab::align_future_targets(std::vector<CrossVenueSample>& samples,
                                         const std::span<const TimestampNs> horizons_ns,
                                         const TargetAlignmentConfig config) {
+    if (config.missing_target_policy != MissingTargetPolicy::KeepUndefined &&
+        config.missing_target_policy != MissingTargetPolicy::DiscardRow) {
+        throw std::invalid_argument("unsupported missing target policy");
+    }
     align_future_targets(std::span<CrossVenueSample>{samples}, horizons_ns,
                          config.max_target_delay_ns);
     if (config.missing_target_policy == MissingTargetPolicy::DiscardRow) {

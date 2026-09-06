@@ -140,7 +140,7 @@ bool test_multiple_future_target_horizons() {
         sample(110, 102.0, 101.5),
         sample(155, 99.0, 99.5),
     };
-    constexpr std::array horizons{10ULL, 50ULL};
+    constexpr std::array<fairvaluelab::TimestampNs, 2> horizons{10, 50};
     fairvaluelab::align_future_targets(samples, horizons);
 
     FVL_CHECK(samples[0].future_targets.size() == 2);
@@ -172,7 +172,10 @@ bool test_multiple_future_target_horizons() {
 
 bool test_target_configuration_validation() {
     std::vector samples{sample(100, 100.0, 100.0)};
-    for (const auto horizons : {std::array{0ULL, 10ULL}, std::array{10ULL, 10ULL}}) {
+    for (const auto horizons : {
+             std::array<fairvaluelab::TimestampNs, 2>{0, 10},
+             std::array<fairvaluelab::TimestampNs, 2>{10, 10},
+         }) {
         bool rejected = false;
         try {
             fairvaluelab::align_future_targets(samples, horizons);
@@ -181,6 +184,19 @@ bool test_target_configuration_validation() {
         }
         FVL_CHECK(rejected);
     }
+    bool rejected = false;
+    try {
+        constexpr std::array<fairvaluelab::TimestampNs, 1> horizon{10};
+        fairvaluelab::align_future_targets(
+            samples, horizon,
+            fairvaluelab::TargetAlignmentConfig{
+                .missing_target_policy =
+                    static_cast<fairvaluelab::MissingTargetPolicy>(255),
+            });
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    FVL_CHECK(rejected);
     return true;
 }
 
@@ -191,7 +207,7 @@ bool test_first_target_at_or_after_horizon() {
         sample(115, 105.0, 105.0),
         sample(130, 110.0, 110.0),
     };
-    constexpr std::array horizons{10ULL};
+    constexpr std::array<fairvaluelab::TimestampNs, 1> horizons{10};
     fairvaluelab::align_future_targets(
         samples, horizons,
         fairvaluelab::TargetAlignmentConfig{
@@ -207,7 +223,7 @@ bool test_first_target_at_or_after_horizon() {
 }
 
 bool test_maximum_target_delay_and_missing_policy() {
-    constexpr std::array horizons{10ULL};
+    constexpr std::array<fairvaluelab::TimestampNs, 1> horizons{10};
     auto kept = std::vector{
         sample(100, 100.0, 100.0),
         sample(115, 105.0, 105.0),
@@ -247,7 +263,7 @@ bool test_target_alignment_overflow_and_invalid_future_state() {
         sample(114, 104.0, 104.0),
         sample(maximum - 5, 200.0, 200.0),
     };
-    constexpr std::array horizons{10ULL};
+    constexpr std::array<fairvaluelab::TimestampNs, 1> horizons{10};
     fairvaluelab::align_future_targets(samples, horizons);
     FVL_CHECK(samples[0].future_targets[0].target_timestamp_ns == 114);
     FVL_CHECK(samples[0].future_targets[0].target_delay_ns == 4);
@@ -269,7 +285,7 @@ bool test_future_data_never_enters_current_features() {
 
     FVL_CHECK(sampler.process(update(1, 4, Side::Ask, 102, 0, 200), output).accepted());
     FVL_CHECK(output.back().consolidated.mid == 2'626.0);
-    constexpr std::array horizons{50ULL};
+    constexpr std::array<fairvaluelab::TimestampNs, 1> horizons{50};
     fairvaluelab::align_future_targets(output, horizons);
 
     const auto& current = output[current_row_index];

@@ -108,6 +108,23 @@ bool test_dataset_rejects_bad_input() {
         }
         FVL_CHECK(rejected);
     }
+
+    std::istringstream too_many_venues{
+        "event_type,sequence_number,venue_id,exchange_timestamp_ns,"
+        "local_receipt_timestamp_ns,side,price_ticks,quantity\n"
+        "book,1,1,99,100,B,100,10\n"
+        "book,1,2,100,101,B,200,10\n"};
+    std::ostringstream output;
+    fairvaluelab::ResearchDatasetConfig config;
+    config.sampler.feature_emitter.venue_capacity = 1;
+    bool rejected = false;
+    try {
+        static_cast<void>(
+            fairvaluelab::generate_research_dataset_csv(too_many_venues, output, config));
+    } catch (const std::runtime_error&) {
+        rejected = true;
+    }
+    FVL_CHECK(rejected);
     return true;
 }
 

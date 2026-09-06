@@ -1,7 +1,7 @@
 [project]
 name = "fairvaluelab"
 version = "0.1.0"
-description = "Low-latency cross-venue fair-value research and execution system"
+description = "Latency-aware cross-venue fair-value research toolkit"
 readme = "README.md"
 authors = [
     { name = "midhilesh", email = "chintu.midhilesh@gmail.com" }

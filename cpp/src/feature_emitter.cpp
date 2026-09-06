@@ -24,6 +24,17 @@ using fairvaluelab::FeatureSet;
 using fairvaluelab::PriceLevel;
 using fairvaluelab::Quantity;
 using fairvaluelab::SampleKind;
+using fairvaluelab::TimestampNs;
+
+std::optional<TimestampNs> next_clock_after(const TimestampNs timestamp_ns,
+                                            const TimestampNs interval_ns) noexcept {
+    const auto remainder = timestamp_ns % interval_ns;
+    const auto increment = interval_ns - remainder;
+    if (timestamp_ns > std::numeric_limits<TimestampNs>::max() - increment) {
+        return std::nullopt;
+    }
+    return timestamp_ns + increment;
+}
 
 Quantity total_depth(const std::span<const PriceLevel> levels) {
     Quantity total = 0;
@@ -236,6 +247,8 @@ fairvaluelab::FeatureSet fairvaluelab::compute_features(
     if (sample_timestamp_ns < local_receipt_timestamp_ns) {
         throw std::invalid_argument("sample timestamp precedes the last update");
     }
+    const auto best_bid = book.best_bid();
+    const auto best_ask = book.best_ask();
     return FeatureSet{
         sample_kind,
         venue_id,
@@ -262,8 +275,8 @@ fairvaluelab::FeatureSet fairvaluelab::compute_features(
         0,
         std::nullopt,
         std::nullopt,
-        book.best_bid().has_value() ? std::optional{book.best_bid()->price_ticks} : std::nullopt,
-        book.best_ask().has_value() ? std::optional{book.best_ask()->price_ticks} : std::nullopt,
+        best_bid.has_value() ? std::optional{best_bid->price_ticks} : std::nullopt,
+        best_ask.has_value() ? std::optional{best_ask->price_ticks} : std::nullopt,
     };
 }
 
@@ -405,11 +418,17 @@ void fairvaluelab::FeatureEmitter::advance(const TimestampNs timestamp_ns,
 
     const auto begin = output.size();
     for (auto& state : states_) {
-        while (state.initialized && state.next_clock_timestamp_ns <= timestamp_ns) {
+        while (state.next_clock_timestamp_ns.has_value() &&
+               *state.next_clock_timestamp_ns <= timestamp_ns) {
             output.push_back(features(state, state.venue_id, state.exchange_timestamp_ns,
                                       state.local_receipt_timestamp_ns,
-                                      state.next_clock_timestamp_ns, SampleKind::Clock));
-            state.next_clock_timestamp_ns += config_.clock_interval_ns;
+                                      *state.next_clock_timestamp_ns, SampleKind::Clock));
+            if (*state.next_clock_timestamp_ns >
+                std::numeric_limits<TimestampNs>::max() - config_.clock_interval_ns) {
+                state.next_clock_timestamp_ns.reset();
+            } else {
+                *state.next_clock_timestamp_ns += config_.clock_interval_ns;
+            }
         }
     }
     current_timestamp_ns_ = timestamp_ns;
@@ -451,10 +470,8 @@ fairvaluelab::ApplyResult fairvaluelab::FeatureEmitter::process(
         state.local_receipt_timestamp_ns = update.local_receipt_timestamp_ns;
         if (!state.initialized) {
             state.initialized = true;
-            state.next_clock_timestamp_ns = update.local_receipt_timestamp_ns +
-                                                    config_.clock_interval_ns -
-                                                    update.local_receipt_timestamp_ns %
-                                                        config_.clock_interval_ns;
+            state.next_clock_timestamp_ns = next_clock_after(
+                update.local_receipt_timestamp_ns, config_.clock_interval_ns);
         }
         output.push_back(features(state, update.venue_id, update.exchange_timestamp_ns,
                                   update.local_receipt_timestamp_ns,
@@ -486,10 +503,8 @@ void fairvaluelab::FeatureEmitter::process(const Trade& trade, std::vector<Featu
     state.local_receipt_timestamp_ns = trade.local_receipt_timestamp_ns;
     if (!state.initialized) {
         state.initialized = true;
-        state.next_clock_timestamp_ns = trade.local_receipt_timestamp_ns +
-                                                config_.clock_interval_ns -
-                                                trade.local_receipt_timestamp_ns %
-                                                    config_.clock_interval_ns;
+        state.next_clock_timestamp_ns =
+            next_clock_after(trade.local_receipt_timestamp_ns, config_.clock_interval_ns);
     }
     output.push_back(features(state, trade.venue_id, trade.exchange_timestamp_ns,
                               trade.local_receipt_timestamp_ns,

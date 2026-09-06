@@ -504,6 +504,23 @@ bool test_emitter_capacity_validation() {
     return true;
 }
 
+bool test_clock_timestamp_overflow_is_suppressed() {
+    constexpr auto maximum = std::numeric_limits<fairvaluelab::TimestampNs>::max();
+    FeatureEmitter emitter{FeatureEmitterConfig{
+        .clock_interval_ns = 10,
+        .event_window = 2,
+        .time_window_ns = 100,
+        .band_ticks = 1,
+        .venue_capacity = 1,
+    }};
+    FVL_CHECK(emitter.process(update(1, Side::Bid, 100, 10, maximum - 4)).size() == 1);
+    const auto output = emitter.process(update(2, Side::Ask, 102, 10, maximum));
+    FVL_CHECK(output.size() == 1);
+    FVL_CHECK(output.front().sample_kind == SampleKind::Event);
+    FVL_CHECK(output.front().sample_timestamp_ns == maximum);
+    return true;
+}
+
 struct TestCase {
     std::string_view name;
     bool (*run)();
@@ -527,6 +544,7 @@ int main() {
         TestCase{"ring overwrites and expiry", test_ring_overwrites_and_expiry},
         TestCase{"output append and clock order", test_output_append_and_clock_order},
         TestCase{"emitter capacity validation", test_emitter_capacity_validation},
+        TestCase{"clock timestamp overflow", test_clock_timestamp_overflow_is_suppressed},
     };
 
     std::size_t passed = 0;

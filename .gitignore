@@ -23,3 +23,7 @@ Thumbs.db
 
 # Local market captures
 data/capture/
+
+# Generated research output
+data/generated/*
+!data/generated/.gitkeep
