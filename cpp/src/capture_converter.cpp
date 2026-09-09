@@ -23,6 +23,7 @@ using fairvaluelab::BinanceAdapter;
 using fairvaluelab::BookUpdate;
 using fairvaluelab::CoinbaseAdapter;
 using fairvaluelab::ConversionReport;
+using fairvaluelab::KrakenAdapter;
 using fairvaluelab::OkxAdapter;
 using fairvaluelab::NormalizedEvent;
 using fairvaluelab::Rational;
@@ -111,6 +112,8 @@ fairvaluelab::convert_capture_directory(const std::filesystem::path& input,
         VenueConfig{2, "coinbase", Rational{1, 100}, 100'000'000, 64}, "coinbase.ndjson"));
     sources.push_back(make_source<OkxAdapter>(
         VenueConfig{3, "okx", Rational{1, 10}, 100'000'000, 64}, "okx.ndjson"));
+    sources.push_back(make_source<KrakenAdapter>(
+        VenueConfig{4, "kraken", Rational{1, 10}, 100'000'000, 64}, "kraken.ndjson"));
 
     std::vector<NormalizedEvent> events;
     ConversionReport report;

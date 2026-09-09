@@ -2,13 +2,18 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from fairvaluelab.capture.core import DEFAULT_VENUES, run_capture, summarize_capture
+from fairvaluelab.capture.core import (
+    DEFAULT_VENUES,
+    SUPPORTED_VENUES,
+    run_capture,
+    summarize_capture,
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="fvl-capture")
     parser.add_argument("--symbol", default="BTC-USD")
-    parser.add_argument("--venues", nargs="+", choices=DEFAULT_VENUES, default=DEFAULT_VENUES)
+    parser.add_argument("--venues", nargs="+", choices=SUPPORTED_VENUES, default=DEFAULT_VENUES)
     parser.add_argument(
         "--duration-seconds",
         "--duration",

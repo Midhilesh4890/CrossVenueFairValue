@@ -12,7 +12,8 @@ from typing import Protocol, cast
 
 from websockets.asyncio.client import connect
 
-DEFAULT_VENUES = ("coinbase", "kraken", "binance")
+DEFAULT_VENUES = ("kraken", "binance")
+SUPPORTED_VENUES = ("binance", "coinbase", "kraken", "okx")
 
 
 class WebSocketLike(Protocol):

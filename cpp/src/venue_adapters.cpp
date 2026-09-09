@@ -53,13 +53,31 @@ std::optional<Rational> parse_decimal(const std::string_view value) {
         return std::nullopt;
     }
 
+    const auto exponent_position = value.find_first_of("eE");
+    const auto decimal = value.substr(0, exponent_position);
+    int exponent = 0;
+    if (exponent_position != std::string_view::npos) {
+        auto exponent_text = value.substr(exponent_position + 1);
+        if (!exponent_text.empty() && exponent_text.front() == '+') {
+            exponent_text.remove_prefix(1);
+        }
+        const auto parsed_exponent = parse_integer<int>(exponent_text);
+        if (!parsed_exponent.has_value() || *parsed_exponent < -19 || *parsed_exponent > 19) {
+            return std::nullopt;
+        }
+        exponent = *parsed_exponent;
+    }
+
     std::size_t index = 0;
     bool negative = false;
-    if (value.front() == '-' || value.front() == '+') {
-        negative = value.front() == '-';
+    if (decimal.empty()) {
+        return std::nullopt;
+    }
+    if (decimal.front() == '-' || decimal.front() == '+') {
+        negative = decimal.front() == '-';
         index = 1;
     }
-    if (index == value.size()) {
+    if (index == decimal.size()) {
         return std::nullopt;
     }
 
@@ -68,8 +86,8 @@ std::optional<Rational> parse_decimal(const std::string_view value) {
     bool decimal_point = false;
     bool has_digit = false;
     constexpr auto maximum = static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
-    for (; index < value.size(); ++index) {
-        const char character = value[index];
+    for (; index < decimal.size(); ++index) {
+        const char character = decimal[index];
         if (character == '.' && !decimal_point) {
             decimal_point = true;
             continue;
@@ -94,8 +112,36 @@ std::optional<Rational> parse_decimal(const std::string_view value) {
         return std::nullopt;
     }
 
+    const auto reduction = std::gcd(magnitude, denominator);
+    magnitude /= reduction;
+    denominator /= reduction;
+    while (exponent > 0) {
+        if (magnitude > maximum / 10) {
+            return std::nullopt;
+        }
+        magnitude *= 10;
+        --exponent;
+    }
+    while (exponent < 0) {
+        if (denominator > std::numeric_limits<std::uint64_t>::max() / 10) {
+            return std::nullopt;
+        }
+        denominator *= 10;
+        ++exponent;
+    }
+
     const auto numerator = static_cast<std::int64_t>(magnitude);
     return Rational{negative ? -numerator : numerator, denominator};
+}
+
+std::optional<std::string> decimal_text(const Json& value) {
+    if (value.is_string()) {
+        return value.get<std::string>();
+    }
+    if (value.is_number()) {
+        return value.dump();
+    }
+    return std::nullopt;
 }
 
 std::optional<Quantity> parse_quantity(const std::string_view value,
@@ -410,6 +456,76 @@ AdapterStatus fairvaluelab::CoinbaseAdapter::normalize(const std::string_view ra
             return AdapterStatus::Malformed;
         }
         const auto& payload = envelope->payload;
+        const auto exchange_type = payload.value("type", "");
+        if (exchange_type == "snapshot") {
+            const auto& bids = payload.at("bids");
+            const auto& asks = payload.at("asks");
+            if (!bids.is_array() || !asks.is_array()) {
+                return AdapterStatus::Malformed;
+            }
+            for (const auto& level : bids) {
+                if (!level.is_array() || level.size() < 2 || !level.at(0).is_string() ||
+                    !level.at(1).is_string() ||
+                    !append_update(config_, Side::Bid,
+                                   level.at(0).get_ref<const std::string&>(),
+                                   level.at(1).get_ref<const std::string&>(),
+                                   envelope->local_receipt_timestamp_ns,
+                                   envelope->local_receipt_timestamp_ns, output)) {
+                    output.clear();
+                    return AdapterStatus::Malformed;
+                }
+            }
+            for (const auto& level : asks) {
+                if (!level.is_array() || level.size() < 2 || !level.at(0).is_string() ||
+                    !level.at(1).is_string() ||
+                    !append_update(config_, Side::Ask,
+                                   level.at(0).get_ref<const std::string&>(),
+                                   level.at(1).get_ref<const std::string&>(),
+                                   envelope->local_receipt_timestamp_ns,
+                                   envelope->local_receipt_timestamp_ns, output)) {
+                    output.clear();
+                    return AdapterStatus::Malformed;
+                }
+            }
+            if (output.empty()) {
+                return AdapterStatus::Malformed;
+            }
+            assign_sequences(SequenceStatus::Accepted, normalized_sequence_, output);
+            return AdapterStatus::Accepted;
+        }
+        if (exchange_type == "l2update") {
+            const auto exchange_timestamp_ns =
+                iso_timestamp_to_ns(payload.at("time").get_ref<const std::string&>());
+            const auto& changes = payload.at("changes");
+            if (!exchange_timestamp_ns.has_value() || !changes.is_array()) {
+                return AdapterStatus::Malformed;
+            }
+            for (const auto& change : changes) {
+                if (!change.is_array() || change.size() < 3 || !change.at(0).is_string() ||
+                    !change.at(1).is_string() || !change.at(2).is_string()) {
+                    output.clear();
+                    return AdapterStatus::Malformed;
+                }
+                const auto side_value = change.at(0).get_ref<const std::string&>();
+                const auto side = side_value == "buy"    ? std::optional{Side::Bid}
+                                  : side_value == "sell" ? std::optional{Side::Ask}
+                                                          : std::nullopt;
+                if (!side.has_value() ||
+                    !append_update(config_, *side,
+                                   change.at(1).get_ref<const std::string&>(),
+                                   change.at(2).get_ref<const std::string&>(),
+                                   *exchange_timestamp_ns, envelope->local_receipt_timestamp_ns,
+                                   output)) {
+                    output.clear();
+                    return AdapterStatus::Malformed;
+                }
+            }
+            if (output.empty()) {
+                return AdapterStatus::Malformed;
+            }
+            assign_sequences(SequenceStatus::Accepted, normalized_sequence_, output);
+            return AdapterStatus::Accepted;
+        }
         const auto has_sequence = payload.contains("sequence_num") &&
                                   payload.at("sequence_num").is_number_unsigned();
         const auto source_sequence =
@@ -493,6 +609,25 @@ AdapterStatus fairvaluelab::CoinbaseAdapter::normalize_trades(
             return AdapterStatus::Malformed;
         }
         const auto& payload = envelope->payload;
+        const auto exchange_type = payload.value("type", "");
+        if (exchange_type == "match" || exchange_type == "last_match") {
+            const auto side_value = payload.at("side").get_ref<const std::string&>();
+            const auto side = side_value == "sell"   ? std::optional{TradeSide::Buy}
+                              : side_value == "buy" ? std::optional{TradeSide::Sell}
+                                                     : std::nullopt;
+            const auto exchange_timestamp_ns =
+                iso_timestamp_to_ns(payload.at("time").get_ref<const std::string&>());
+            if (!side.has_value() || !exchange_timestamp_ns.has_value() ||
+                !append_trade(config_, *side,
+                              payload.at("price").get_ref<const std::string&>(),
+                              payload.at("size").get_ref<const std::string&>(),
+                              *exchange_timestamp_ns, envelope->local_receipt_timestamp_ns,
+                              payload.at("trade_id").get<std::uint64_t>(), output)) {
+                output.clear();
+                return AdapterStatus::Malformed;
+            }
+            return AdapterStatus::Accepted;
+        }
         if (payload.value("channel", "") != "market_trades") {
             return AdapterStatus::Unsupported;
         }
@@ -525,6 +660,116 @@ AdapterStatus fairvaluelab::CoinbaseAdapter::normalize_trades(
                     output.clear();
                     return AdapterStatus::Malformed;
                 }
+            }
+        }
+        return output.empty() ? AdapterStatus::Unsupported : AdapterStatus::Accepted;
+    } catch (const std::exception&) {
+        output.clear();
+        return AdapterStatus::Malformed;
+    }
+}
+
+fairvaluelab::KrakenAdapter::KrakenAdapter(VenueConfig config) : config_(std::move(config)) {}
+
+AdapterStatus fairvaluelab::KrakenAdapter::normalize(const std::string_view raw_record,
+                                                     std::vector<BookUpdate>& output) const {
+    output.clear();
+    try {
+        const auto envelope = parse_envelope(raw_record);
+        if (!envelope.has_value()) {
+            return AdapterStatus::Malformed;
+        }
+        const auto& payload = envelope->payload;
+        if (payload.value("channel", "") != "book") {
+            return AdapterStatus::Unsupported;
+        }
+        const auto message_type = payload.value("type", "");
+        if (message_type != "snapshot" && message_type != "update") {
+            return AdapterStatus::Unsupported;
+        }
+        const auto& entries = payload.at("data");
+        if (!entries.is_array() || entries.empty()) {
+            return AdapterStatus::Malformed;
+        }
+        for (const auto& entry : entries) {
+            const auto exchange_timestamp_ns =
+                iso_timestamp_to_ns(entry.at("timestamp").get_ref<const std::string&>());
+            const auto& bids = entry.at("bids");
+            const auto& asks = entry.at("asks");
+            if (!exchange_timestamp_ns.has_value() || !bids.is_array() || !asks.is_array()) {
+                output.clear();
+                return AdapterStatus::Malformed;
+            }
+            for (const auto& level : bids) {
+                const auto price = decimal_text(level.at("price"));
+                const auto quantity = decimal_text(level.at("qty"));
+                if (!price.has_value() || !quantity.has_value() ||
+                    !append_update(config_, Side::Bid, *price, *quantity,
+                                   *exchange_timestamp_ns, envelope->local_receipt_timestamp_ns,
+                                   output)) {
+                    output.clear();
+                    return AdapterStatus::Malformed;
+                }
+            }
+            for (const auto& level : asks) {
+                const auto price = decimal_text(level.at("price"));
+                const auto quantity = decimal_text(level.at("qty"));
+                if (!price.has_value() || !quantity.has_value() ||
+                    !append_update(config_, Side::Ask, *price, *quantity,
+                                   *exchange_timestamp_ns, envelope->local_receipt_timestamp_ns,
+                                   output)) {
+                    output.clear();
+                    return AdapterStatus::Malformed;
+                }
+            }
+        }
+        if (output.empty()) {
+            return AdapterStatus::Malformed;
+        }
+        assign_sequences(SequenceStatus::Accepted, normalized_sequence_, output);
+        return AdapterStatus::Accepted;
+    } catch (const std::exception&) {
+        output.clear();
+        return AdapterStatus::Malformed;
+    }
+}
+
+AdapterStatus fairvaluelab::KrakenAdapter::normalize_trades(
+    const std::string_view raw_record, std::vector<Trade>& output) const {
+    output.clear();
+    try {
+        const auto envelope = parse_envelope(raw_record);
+        if (!envelope.has_value()) {
+            return AdapterStatus::Malformed;
+        }
+        const auto& payload = envelope->payload;
+        if (payload.value("channel", "") != "trade") {
+            return AdapterStatus::Unsupported;
+        }
+        const auto message_type = payload.value("type", "");
+        if (message_type != "snapshot" && message_type != "update") {
+            return AdapterStatus::Unsupported;
+        }
+        const auto& trades = payload.at("data");
+        if (!trades.is_array()) {
+            return AdapterStatus::Malformed;
+        }
+        for (const auto& trade : trades) {
+            const auto side_value = trade.at("side").get_ref<const std::string&>();
+            const auto side = side_value == "buy"    ? std::optional{TradeSide::Buy}
+                              : side_value == "sell" ? std::optional{TradeSide::Sell}
+                                                     : std::nullopt;
+            const auto price = decimal_text(trade.at("price"));
+            const auto quantity = decimal_text(trade.at("qty"));
+            const auto exchange_timestamp_ns =
+                iso_timestamp_to_ns(trade.at("timestamp").get_ref<const std::string&>());
+            if (!side.has_value() || !price.has_value() || !quantity.has_value() ||
+                !exchange_timestamp_ns.has_value() ||
+                !append_trade(config_, *side, *price, *quantity, *exchange_timestamp_ns,
+                              envelope->local_receipt_timestamp_ns,
+                              trade.at("trade_id").get<std::uint64_t>(), output)) {
+                output.clear();
+                return AdapterStatus::Malformed;
             }
         }
         return output.empty() ? AdapterStatus::Unsupported : AdapterStatus::Accepted;

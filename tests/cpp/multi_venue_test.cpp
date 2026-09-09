@@ -23,6 +23,7 @@ using fairvaluelab::AdapterStatus;
 using fairvaluelab::BinanceAdapter;
 using fairvaluelab::BookUpdate;
 using fairvaluelab::CoinbaseAdapter;
+using fairvaluelab::KrakenAdapter;
 using fairvaluelab::OkxAdapter;
 using fairvaluelab::Rational;
 using fairvaluelab::Side;
@@ -169,6 +170,70 @@ bool test_fixture_conversion_and_replay() {
     return true;
 }
 
+bool test_public_capture_schemas() {
+    const CoinbaseAdapter coinbase{VenueConfig{2, "coinbase", Rational{1, 100}, 100'000'000, 64}};
+    const KrakenAdapter kraken{VenueConfig{4, "kraken", Rational{1, 10}, 100'000'000, 64}};
+    std::vector<BookUpdate> updates;
+
+    const std::string coinbase_snapshot =
+        R"({"local_receipt_timestamp_ns":1704067200000000200,"raw_payload":"{\"type\":\"snapshot\",\"product_id\":\"BTC-USD\",\"bids\":[[\"50000.25\",\"1.25000000\"]],\"asks\":[[\"50001.00\",\"2.00000000\"]]}"})";
+    FVL_CHECK(coinbase.normalize(coinbase_snapshot, updates) == AdapterStatus::Accepted);
+    FVL_CHECK(updates.size() == 2);
+    FVL_CHECK(updates.front().side == Side::Bid);
+    FVL_CHECK(updates.front().price_ticks == 5'000'025);
+    FVL_CHECK(updates.front().quantity == 125'000'000);
+    FVL_CHECK(updates.front().exchange_timestamp_ns == 1'704'067'200'000'000'200);
+    FVL_CHECK(updates.front().sequence_number == 1);
+    FVL_CHECK(updates.back().side == Side::Ask);
+    FVL_CHECK(updates.back().sequence_number == 2);
+
+    const std::string coinbase_update =
+        R"({"local_receipt_timestamp_ns":1704067200000000300,"raw_payload":"{\"type\":\"l2update\",\"product_id\":\"BTC-USD\",\"time\":\"2024-01-01T00:00:00.000000001Z\",\"changes\":[[\"buy\",\"50000.50\",\"0.75000000\"]]}"})";
+    FVL_CHECK(coinbase.normalize(coinbase_update, updates) == AdapterStatus::Accepted);
+    FVL_CHECK(updates.size() == 1);
+    FVL_CHECK(updates.front().side == Side::Bid);
+    FVL_CHECK(updates.front().price_ticks == 5'000'050);
+    FVL_CHECK(updates.front().exchange_timestamp_ns == 1'704'067'200'000'000'001);
+    FVL_CHECK(updates.front().sequence_number == 3);
+
+    const std::string kraken_snapshot =
+        R"({"local_receipt_timestamp_ns":1788956075584101200,"raw_payload":"{\"channel\":\"book\",\"type\":\"snapshot\",\"data\":[{\"symbol\":\"BTC/USD\",\"bids\":[{\"price\":79359.5,\"qty\":0.73368355},{\"price\":79355.5,\"qty\":0.00005100}],\"asks\":[{\"price\":79359.6,\"qty\":0.00247254}],\"checksum\":1661133483,\"timestamp\":\"2026-09-09T12:14:38.974071Z\"}]}"})";
+    FVL_CHECK(kraken.normalize(kraken_snapshot, updates) == AdapterStatus::Accepted);
+    FVL_CHECK(updates.size() == 3);
+    FVL_CHECK(updates.front().venue_id == 4);
+    FVL_CHECK(updates.front().price_ticks == 793'595);
+    FVL_CHECK(updates.front().quantity == 73'368'355);
+    FVL_CHECK(updates.front().local_receipt_timestamp_ns == 1'788'956'075'584'101'200);
+    FVL_CHECK(updates.front().sequence_number == 1);
+    FVL_CHECK(updates[1].quantity == 5'100);
+    FVL_CHECK(updates[1].sequence_number == 2);
+    FVL_CHECK(updates.back().side == Side::Ask);
+    FVL_CHECK(updates.back().sequence_number == 3);
+
+    std::vector<Trade> trades;
+    const std::string coinbase_trade =
+        R"({"local_receipt_timestamp_ns":1704067200000000400,"raw_payload":"{\"type\":\"match\",\"trade_id\":22,\"side\":\"sell\",\"price\":\"50001.25\",\"size\":\"0.25000000\",\"time\":\"2024-01-01T00:00:00.000000001Z\",\"product_id\":\"BTC-USD\"}"})";
+    FVL_CHECK(coinbase.normalize_trades(coinbase_trade, trades) == AdapterStatus::Accepted);
+    FVL_CHECK(trades.size() == 1);
+    FVL_CHECK(trades.front().side == TradeSide::Buy);
+    FVL_CHECK(trades.front().sequence_number == 22);
+
+    const std::string kraken_trade =
+        R"({"local_receipt_timestamp_ns":1788956075584101300,"raw_payload":"{\"channel\":\"trade\",\"type\":\"update\",\"data\":[{\"symbol\":\"BTC/USD\",\"side\":\"sell\",\"qty\":0.12500000,\"price\":79359.5,\"trade_id\":31,\"timestamp\":\"2026-09-09T12:14:39.000001Z\"}]}"})";
+    FVL_CHECK(kraken.normalize_trades(kraken_trade, trades) == AdapterStatus::Accepted);
+    FVL_CHECK(trades.size() == 1);
+    FVL_CHECK(trades.front().side == TradeSide::Sell);
+    FVL_CHECK(trades.front().price_ticks == 793'595);
+    FVL_CHECK(trades.front().quantity == 12'500'000);
+    FVL_CHECK(trades.front().sequence_number == 31);
+
+    const std::string invalid_kraken_price =
+        R"({"local_receipt_timestamp_ns":1,"raw_payload":"{\"channel\":\"book\",\"type\":\"update\",\"data\":[{\"bids\":[{\"price\":79359.55,\"qty\":1}],\"asks\":[],\"timestamp\":\"2026-09-09T12:14:39Z\"}]}"})";
+    FVL_CHECK(kraken.normalize(invalid_kraken_price, updates) == AdapterStatus::Malformed);
+    FVL_CHECK(updates.empty());
+    return true;
+}
+
 bool test_malformed_normalized_row() {
     std::istringstream input{
         "sequence_number,venue_id,exchange_timestamp_ns,local_receipt_timestamp_ns,side,"
@@ -189,6 +254,7 @@ struct TestCase {
 int main() {
     constexpr std::array tests{
         TestCase{"concrete adapters", test_concrete_adapters},
+        TestCase{"public capture schemas", test_public_capture_schemas},
         TestCase{"fixture conversion and replay", test_fixture_conversion_and_replay},
         TestCase{"malformed normalized row", test_malformed_normalized_row},
     };
