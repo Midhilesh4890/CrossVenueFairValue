@@ -4,7 +4,7 @@ import subprocess
 import time
 import urllib.request
 from collections.abc import Callable
-from contextlib import AbstractAsyncContextManager
+from contextlib import AbstractAsyncContextManager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -482,6 +482,8 @@ async def _capture_binance_snapshot(
         finally:
             if not receive_task.done():
                 receive_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await receive_task
         snapshot_id = _binance_last_update_id(snapshot_payload)
         depth_messages = [
             message

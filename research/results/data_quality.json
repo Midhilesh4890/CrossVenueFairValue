@@ -1,0 +1,214 @@
+{
+  "generated_at_utc": "2026-09-09T20:11:59.661165Z",
+  "input_files": [
+    "data/capture/20260909T200632.022951Z/binance.ndjson",
+    "data/capture/20260909T200632.022951Z/kraken.ndjson"
+  ],
+  "input_provenance": [
+    {
+      "capture_end_timestamp_ns": 1788984419759856300,
+      "capture_end_utc": "2026-09-09T20:06:59.759856300Z",
+      "capture_start_timestamp_ns": 1788984392022950900,
+      "capture_start_utc": "2026-09-09T20:06:32.022950900Z",
+      "event_count": 300,
+      "exchange_timestamp_fields": [
+        "E",
+        "T"
+      ],
+      "instrument": "BTCUSDT",
+      "normalized_file": null,
+      "price_scale": null,
+      "quantity_scale": null,
+      "raw_file": "data/capture/20260909T200632.022951Z/binance.ndjson",
+      "receipt_timestamp_field": "local_receipt_timestamp_ns",
+      "records_by_kind": {
+        "depth_diff": 178,
+        "snapshot": 1,
+        "trade": 121
+      },
+      "scale_status": "deferred_to_normalization",
+      "schema_version": 1,
+      "sequence_update_fields": [
+        "U",
+        "u",
+        "lastUpdateId",
+        "t"
+      ],
+      "software_revision": "f8a75e55664fa13ccbf955a34fcc49859f74fbe4",
+      "source": {
+        "snapshot": "https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=5000",
+        "websocket": "wss://stream.binance.com:9443/stream?streams=btcusdt@depth@100ms/btcusdt@trade"
+      },
+      "venue": "binance"
+    },
+    {
+      "capture_end_timestamp_ns": 1788984419759856300,
+      "capture_end_utc": "2026-09-09T20:06:59.759856300Z",
+      "capture_start_timestamp_ns": 1788984392022950900,
+      "capture_start_utc": "2026-09-09T20:06:32.022950900Z",
+      "event_count": 300,
+      "exchange_timestamp_fields": [
+        "data[].timestamp"
+      ],
+      "instrument": "BTC/USD",
+      "normalized_file": null,
+      "price_scale": null,
+      "quantity_scale": null,
+      "raw_file": "data/capture/20260909T200632.022951Z/kraken.ndjson",
+      "receipt_timestamp_field": "local_receipt_timestamp_ns",
+      "records_by_kind": {
+        "depth_diff": 284,
+        "other": 13,
+        "snapshot": 1,
+        "trade": 2
+      },
+      "scale_status": "deferred_to_normalization",
+      "schema_version": 1,
+      "sequence_update_fields": [
+        "data[].checksum",
+        "data[].trade_id"
+      ],
+      "software_revision": "f8a75e55664fa13ccbf955a34fcc49859f74fbe4",
+      "source": {
+        "websocket": "wss://ws.kraken.com/v2"
+      },
+      "venue": "kraken"
+    }
+  ],
+  "quantile_method": "nearest_rank",
+  "schema_version": 1,
+  "venues": {
+    "binance": {
+      "book_updates": 179,
+      "capture_duration_ns": 17626275700,
+      "continuity_limitation": "source_sequence_checked_when_available",
+      "crossed_books": 0,
+      "duplicates": 0,
+      "events": 300,
+      "exchange_timestamp_regression_scope": "combined_book_and_trade_message_order",
+      "exchange_timestamp_regressions": 1,
+      "imbalance": {
+        "count": 179,
+        "max": 0.23811349755800934,
+        "median": 0.22069561248132896,
+        "min": 0.16796744903544422,
+        "p95": 0.23375410028046453,
+        "p99": 0.23694568359774146
+      },
+      "inter_arrival_ns": {
+        "count": 298,
+        "max": 116100800,
+        "median": 81318900,
+        "min": 11600,
+        "p95": 102462500,
+        "p99": 111568500
+      },
+      "invalid_events": 0,
+      "locked_books": 0,
+      "missing_timestamps": 0,
+      "sequence_gaps": 0,
+      "spread": {
+        "count": 179,
+        "max": 0.01,
+        "median": 0.01,
+        "min": 0.01,
+        "p95": 0.01,
+        "p99": 0.01
+      },
+      "stale_events": 0,
+      "timestamp_regression_field": "local_receipt_timestamp_ns",
+      "timestamp_regressions": 1,
+      "trade_size": {
+        "count": 121,
+        "max": 0.17258,
+        "median": 0.00012,
+        "min": 1e-05,
+        "p95": 0.013,
+        "p99": 0.03638
+      },
+      "trades": 121,
+      "venue_age_ns": {
+        "count": 600,
+        "max": 100118100,
+        "median": 0,
+        "min": 0,
+        "p95": 91906900,
+        "p99": 98069500
+      },
+      "visible_depth": {
+        "count": 179,
+        "max": 638.36014,
+        "median": 631.99048,
+        "min": 593.36085,
+        "p95": 638.0086,
+        "p99": 638.25946
+      }
+    },
+    "kraken": {
+      "book_updates": 285,
+      "capture_duration_ns": 10433769100,
+      "continuity_limitation": "checksum_only_no_numeric_book_sequence",
+      "crossed_books": 0,
+      "duplicates": null,
+      "events": 300,
+      "exchange_timestamp_regression_scope": "combined_book_and_trade_message_order",
+      "exchange_timestamp_regressions": 0,
+      "imbalance": {
+        "count": 285,
+        "max": 0.436450315166546,
+        "median": -0.16254791173147698,
+        "min": -0.8341779227897873,
+        "p95": 0.24096236004158172,
+        "p99": 0.43149358999464676
+      },
+      "inter_arrival_ns": {
+        "count": 299,
+        "max": 234361500,
+        "median": 2482900,
+        "min": 14100,
+        "p95": 167696300,
+        "p99": 220558100
+      },
+      "invalid_events": 0,
+      "locked_books": 0,
+      "missing_timestamps": 0,
+      "sequence_gaps": null,
+      "spread": {
+        "count": 285,
+        "max": 0.1,
+        "median": 0.1,
+        "min": 0.1,
+        "p95": 0.1,
+        "p99": 0.1
+      },
+      "stale_events": null,
+      "timestamp_regression_field": "local_receipt_timestamp_ns",
+      "timestamp_regressions": 0,
+      "trade_size": {
+        "count": 2,
+        "max": 0.00061406,
+        "median": 0.0002882,
+        "min": 0.0002882,
+        "p95": 0.00061406,
+        "p99": 0.00061406
+      },
+      "trades": 2,
+      "venue_age_ns": {
+        "count": 594,
+        "max": 6935605900,
+        "median": 0,
+        "min": 0,
+        "p95": 5050939700,
+        "p99": 6482625600
+      },
+      "visible_depth": {
+        "count": 285,
+        "max": 10.01904649,
+        "median": 8.21430739,
+        "min": 5.63662548,
+        "p95": 9.52623228,
+        "p99": 10.01904649
+      }
+    }
+  }
+}

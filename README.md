@@ -63,6 +63,12 @@ Raw fixture capture files can be validated and converted to the normalized schem
 ./build/fvl_features build/normalized.csv build/features.csv --clock-interval-ns 50000000
 ```
 
+Generate a machine-readable quality report from a raw capture directory:
+
+```console
+uv run python -m fairvaluelab.data_quality data/capture/<capture-id> --output research/results/data_quality.json
+```
+
 Generate a clock-sampled cross-venue dataset with configurable staleness, horizons, and maximum
 target delay:
 
