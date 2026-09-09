@@ -93,8 +93,8 @@ def test_capture_uses_fake_websocket_source(tmp_path: Path) -> None:
         writer = BufferedNdjsonWriter(path, flush_interval=60.0)
         websocket = FakeWebSocket(
             [
-                '{"channel":"l2_data","sequence_num":1,"events":[]}',
-                b'{"channel":"market_trades","sequence_num":2,"events":[]}',
+                '{"type":"l2update","product_id":"BTC-USD","changes":[]}',
+                b'{"type":"match","product_id":"BTC-USD","trade_id":2}',
             ]
         )
         factory = FakeConnectionFactory([websocket])
@@ -205,7 +205,7 @@ def test_capture_records_reconnect_marker(tmp_path: Path) -> None:
         path = tmp_path / "coinbase.ndjson"
         writer = BufferedNdjsonWriter(path, flush_interval=60.0)
         first = FakeWebSocket([], eof_when_empty=True)
-        second = FakeWebSocket(['{"channel":"market_trades","sequence_num":1,"events":[]}'])
+        second = FakeWebSocket(['{"type":"match","product_id":"BTC-USD","trade_id":1}'])
         factory = FakeConnectionFactory([first, second])
         timestamps = iter((101, 102))
         clock = AnchoredClock(1_000, 100, lambda: next(timestamps))
@@ -220,6 +220,7 @@ def test_capture_records_reconnect_marker(tmp_path: Path) -> None:
             factory,
             reconnect_initial_delay_seconds=0.001,
             reconnect_max_delay_seconds=0.001,
+            max_events=1,
         )
         await writer.close()
 
@@ -255,9 +256,51 @@ def test_default_subscriptions_include_depth_and_trades() -> None:
     assert binance.snapshot_uri == "https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=5000"
 
     coinbase = subscription_for("coinbase", "BTC-USD")
-    coinbase_channels = {json.loads(message)["channel"] for message in coinbase.messages}
-    assert coinbase_channels == {"level2", "market_trades"}
+    assert coinbase.uri == "wss://ws-feed.exchange.coinbase.com"
+    assert json.loads(coinbase.messages[0])["channels"] == ["level2", "matches", "heartbeat"]
+    assert coinbase.instrument == "BTC-USD"
+
+    kraken = subscription_for("kraken", "BTC-USD")
+    kraken_channels = {json.loads(message)["params"]["channel"] for message in kraken.messages}
+    assert kraken_channels == {"book", "trade"}
+    assert kraken.instrument == "BTC/USD"
 
     okx = subscription_for("okx", "BTC-USD")
     okx_channels = {item["channel"] for item in json.loads(okx.messages[0])["args"]}
     assert okx_channels == {"books", "trades"}
+
+
+def test_capture_stops_at_max_events_and_records_identity(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        path = tmp_path / "kraken.ndjson"
+        writer = BufferedNdjsonWriter(path, flush_interval=60.0)
+        websocket = FakeWebSocket(
+            [
+                '{"channel":"book","type":"snapshot","data":[]}',
+                '{"channel":"book","type":"update","data":[]}',
+                '{"channel":"trade","type":"update","data":[]}',
+            ]
+        )
+        factory = FakeConnectionFactory([websocket])
+        timestamps = iter((101, 102))
+        clock = AnchoredClock(1_000, 100, lambda: next(timestamps))
+        subscription = subscription_for("kraken", "BTC-USD")
+
+        await writer.start()
+        await capture_subscription(
+            subscription,
+            writer,
+            clock,
+            1.0,
+            factory,
+            max_events=2,
+        )
+        await writer.close()
+
+        records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        assert [record["record_kind"] for record in records] == ["snapshot", "depth_diff"]
+        assert all(record["venue"] == "kraken" for record in records)
+        assert all(record["instrument"] == "BTC/USD" for record in records)
+        assert len(websocket.messages) == 1
+
+    asyncio.run(scenario())

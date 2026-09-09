@@ -11,7 +11,7 @@ from typing import Protocol, cast
 
 from websockets.asyncio.client import connect
 
-DEFAULT_VENUES = ("binance", "coinbase", "okx")
+DEFAULT_VENUES = ("coinbase", "kraken", "binance")
 
 
 class WebSocketLike(Protocol):
@@ -30,6 +30,7 @@ class Subscription:
     uri: str
     messages: tuple[str, ...]
     snapshot_uri: str | None = None
+    instrument: str = ""
 
 
 @dataclass(frozen=True)
@@ -67,14 +68,25 @@ class AnchoredClock:
         return self.wall_anchor_ns + self.performance_clock() - self.performance_anchor_ns
 
 
-def frame_record(raw_payload: str, local_receipt_timestamp_ns: int, record_kind: str) -> str:
+def frame_record(
+    raw_payload: str,
+    local_receipt_timestamp_ns: int,
+    record_kind: str,
+    venue: str | None = None,
+    instrument: str | None = None,
+) -> str:
+    record: dict[str, str | int] = {
+        "local_receipt_timestamp_ns": local_receipt_timestamp_ns,
+        "raw_payload": raw_payload,
+        "record_kind": record_kind,
+    }
+    if venue is not None:
+        record["venue"] = venue
+    if instrument is not None:
+        record["instrument"] = instrument
     return (
         json.dumps(
-            {
-                "local_receipt_timestamp_ns": local_receipt_timestamp_ns,
-                "raw_payload": raw_payload,
-                "record_kind": record_kind,
-            },
+            record,
             ensure_ascii=False,
             separators=(",", ":"),
         )
@@ -163,17 +175,43 @@ def subscription_for(venue: str, symbol: str) -> Subscription:
         streams = f"{stream_symbol}@depth@100ms/{stream_symbol}@trade"
         uri = f"wss://stream.binance.com:9443/stream?streams={streams}"
         snapshot_uri = f"https://api.binance.com/api/v3/depth?symbol={rest_symbol}&limit=5000"
-        return Subscription(venue_name, uri, (), snapshot_uri)
+        return Subscription(venue_name, uri, (), snapshot_uri, rest_symbol)
     if venue_name == "coinbase":
         coinbase_quote = "USD" if quote == "USDT" else quote
         product = f"{base}-{coinbase_quote}"
+        message = json.dumps(
+            {
+                "type": "subscribe",
+                "product_ids": [product],
+                "channels": ["level2", "matches", "heartbeat"],
+            }
+        )
+        return Subscription(
+            venue_name,
+            "wss://ws-feed.exchange.coinbase.com",
+            (message,),
+            instrument=product,
+        )
+    if venue_name == "kraken":
+        kraken_quote = "USD" if quote == "USDT" else quote
+        instrument = f"{base}/{kraken_quote}"
         messages = (
-            json.dumps({"type": "subscribe", "product_ids": [product], "channel": "level2"}),
             json.dumps(
-                {"type": "subscribe", "product_ids": [product], "channel": "market_trades"}
+                {
+                    "method": "subscribe",
+                    "params": {"channel": "book", "symbol": [instrument], "depth": 10},
+                    "req_id": 1,
+                }
+            ),
+            json.dumps(
+                {
+                    "method": "subscribe",
+                    "params": {"channel": "trade", "symbol": [instrument]},
+                    "req_id": 2,
+                }
             ),
         )
-        return Subscription(venue_name, "wss://advanced-trade-ws.coinbase.com", messages)
+        return Subscription(venue_name, "wss://ws.kraken.com/v2", messages, instrument=instrument)
     if venue_name == "okx":
         okx_quote = "USDT" if quote == "USD" else quote
         instrument = f"{base}-{okx_quote}"
@@ -186,7 +224,12 @@ def subscription_for(venue: str, symbol: str) -> Subscription:
                 ],
             }
         )
-        return Subscription(venue_name, "wss://ws.okx.com:8443/ws/v5/public", (message,))
+        return Subscription(
+            venue_name,
+            "wss://ws.okx.com:8443/ws/v5/public",
+            (message,),
+            instrument=instrument,
+        )
     raise ValueError(f"unsupported venue: {venue}")
 
 
@@ -232,10 +275,21 @@ def classify_record_kind(venue: str, raw_payload: str) -> str:
         if "lastUpdateId" in payload and "bids" in payload and "asks" in payload:
             return "snapshot"
     if venue_name == "coinbase":
-        channel = payload.get("channel")
-        if channel == "l2_data":
+        event_type = payload.get("type")
+        if event_type == "snapshot":
+            return "snapshot"
+        if event_type == "l2update":
             return "depth_diff"
-        if channel == "market_trades":
+        if event_type in {"match", "last_match"}:
+            return "trade"
+    if venue_name == "kraken":
+        channel = payload.get("channel")
+        message_type = payload.get("type")
+        if channel == "book" and message_type == "snapshot":
+            return "snapshot"
+        if channel == "book" and message_type == "update":
+            return "depth_diff"
+        if channel == "trade" and message_type in {"snapshot", "update"}:
             return "trade"
     if venue_name == "okx":
         arg = payload.get("arg")
@@ -278,12 +332,18 @@ def _binance_depth_range(raw_payload: str) -> tuple[int, int] | None:
     return first_update, final_update
 
 
-def _submit_received(writer: BufferedNdjsonWriter, venue: str, message: ReceivedMessage) -> None:
+def _submit_received(
+    writer: BufferedNdjsonWriter,
+    subscription: Subscription,
+    message: ReceivedMessage,
+) -> None:
     writer.submit(
         frame_record(
             message.raw_payload,
             message.local_receipt_timestamp_ns,
-            classify_record_kind(venue, message.raw_payload),
+            classify_record_kind(subscription.venue, message.raw_payload),
+            subscription.venue,
+            subscription.instrument,
         )
     )
 
@@ -300,15 +360,16 @@ async def _capture_binance_snapshot(
     clock: AnchoredClock,
     deadline: float,
     snapshot_fetcher: SnapshotFetcher,
-) -> None:
+    max_events: int | None,
+) -> int:
     if subscription.snapshot_uri is None:
-        return
+        return 0
     loop = asyncio.get_running_loop()
     buffered: list[ReceivedMessage] = []
     while True:
         remaining = deadline - loop.time()
         if remaining <= 0:
-            return
+            return 0
         snapshot_task = asyncio.create_task(
             asyncio.to_thread(snapshot_fetcher, subscription.snapshot_uri)
         )
@@ -319,7 +380,7 @@ async def _capture_binance_snapshot(
                 if remaining <= 0:
                     snapshot_task.cancel()
                     receive_task.cancel()
-                    return
+                    return 0
                 done, pending = await asyncio.wait(
                     {snapshot_task, receive_task},
                     timeout=remaining,
@@ -328,7 +389,7 @@ async def _capture_binance_snapshot(
                 if not done:
                     snapshot_task.cancel()
                     receive_task.cancel()
-                    return
+                    return 0
                 if receive_task in done:
                     buffered.append(receive_task.result())
                     receive_task = asyncio.create_task(_receive_message(websocket, clock))
@@ -351,13 +412,25 @@ async def _capture_binance_snapshot(
                 first_depth[0] <= snapshot_id + 1 <= first_depth[1]
             ):
                 continue
-        writer.submit(frame_record(snapshot_payload, clock.now_ns(), "snapshot"))
+        captured = 1
+        writer.submit(
+            frame_record(
+                snapshot_payload,
+                clock.now_ns(),
+                "snapshot",
+                subscription.venue,
+                subscription.instrument,
+            )
+        )
         for message in buffered:
+            if max_events is not None and captured >= max_events:
+                break
             depth_range = _binance_depth_range(message.raw_payload)
             if depth_range is not None and depth_range[1] <= snapshot_id:
                 continue
-            _submit_received(writer, subscription.venue, message)
-        return
+            _submit_received(writer, subscription, message)
+            captured += 1
+        return captured
 
 
 async def _capture_connected(
@@ -367,23 +440,32 @@ async def _capture_connected(
     clock: AnchoredClock,
     deadline: float,
     snapshot_fetcher: SnapshotFetcher,
-) -> None:
+    max_events: int | None,
+) -> int:
     for subscription_message in subscription.messages:
         await websocket.send(subscription_message)
+    captured = 0
     if subscription.venue == "binance":
-        await _capture_binance_snapshot(
-            subscription, websocket, writer, clock, deadline, snapshot_fetcher
+        captured = await _capture_binance_snapshot(
+            subscription, websocket, writer, clock, deadline, snapshot_fetcher, max_events
         )
     loop = asyncio.get_running_loop()
     while True:
+        if max_events is not None and captured >= max_events:
+            return captured
         remaining = deadline - loop.time()
         if remaining <= 0:
-            return
+            return captured
         try:
             received = await asyncio.wait_for(_receive_message(websocket, clock), remaining)
         except TimeoutError:
-            return
-        _submit_received(writer, subscription.venue, received)
+            return captured
+        except (ConnectionError, EOFError, OSError):
+            if max_events is None:
+                raise
+            return captured
+        _submit_received(writer, subscription, received)
+        captured += 1
 
 
 async def capture_subscription(
@@ -395,27 +477,48 @@ async def capture_subscription(
     snapshot_fetcher: SnapshotFetcher = fetch_text,
     reconnect_initial_delay_seconds: float = 0.25,
     reconnect_max_delay_seconds: float = 5.0,
+    max_events: int | None = None,
 ) -> None:
     if duration_seconds <= 0:
         raise ValueError("duration must be positive")
     if reconnect_initial_delay_seconds <= 0 or reconnect_max_delay_seconds <= 0:
         raise ValueError("reconnect delays must be positive")
+    if max_events is not None and max_events <= 0:
+        raise ValueError("max events must be positive")
     loop = asyncio.get_running_loop()
     deadline = loop.time() + duration_seconds
     backoff = reconnect_initial_delay_seconds
     attempted = False
+    captured = 0
     while loop.time() < deadline:
+        if max_events is not None and captured >= max_events:
+            return
         if attempted:
-            writer.submit(frame_record("{}", clock.now_ns(), "reconnect"))
+            writer.submit(
+                frame_record(
+                    "{}",
+                    clock.now_ns(),
+                    "reconnect",
+                    subscription.venue,
+                    subscription.instrument,
+                )
+            )
             await asyncio.sleep(min(backoff, max(0.0, deadline - loop.time())))
             backoff = min(reconnect_max_delay_seconds, backoff * 2.0)
         attempted = True
         try:
             async with connection_factory(subscription.uri) as websocket:
-                await _capture_connected(
-                    subscription, websocket, writer, clock, deadline, snapshot_fetcher
+                captured += await _capture_connected(
+                    subscription,
+                    websocket,
+                    writer,
+                    clock,
+                    deadline,
+                    snapshot_fetcher,
+                    None if max_events is None else max_events - captured,
                 )
-                return
+                if max_events is None or captured >= max_events:
+                    return
         except (ConnectionError, EOFError, OSError, TimeoutError):
             continue
 
@@ -461,9 +564,12 @@ async def run_capture(
     venues: tuple[str, ...],
     duration_seconds: float,
     output_directory: Path,
+    max_events: int | None = None,
 ) -> dict[str, Path]:
     if duration_seconds <= 0:
         raise ValueError("duration must be positive")
+    if max_events is not None and max_events <= 0:
+        raise ValueError("max events must be positive")
     selected_venues = tuple(dict.fromkeys(venue.lower() for venue in venues))
     if not selected_venues:
         raise ValueError("at least one venue is required")
@@ -487,6 +593,7 @@ async def run_capture(
                         writers[venue],
                         clock,
                         duration_seconds,
+                        max_events=max_events,
                     )
                 )
     finally:
