@@ -8,12 +8,15 @@ from types import TracebackType
 from fairvaluelab.capture.core import (
     AnchoredClock,
     BufferedNdjsonWriter,
+    CaptureValidationSummary,
     Subscription,
     WebSocketLike,
+    capture_provenance,
     capture_subscription,
     frame_record,
     subscription_for,
     summarize_capture,
+    write_capture_provenance,
 )
 
 
@@ -304,3 +307,41 @@ def test_capture_stops_at_max_events_and_records_identity(tmp_path: Path) -> Non
         assert len(websocket.messages) == 1
 
     asyncio.run(scenario())
+
+
+def test_capture_provenance_sidecar_is_machine_readable(tmp_path: Path) -> None:
+    raw_path = tmp_path / "2026-09-09" / "kraken.ndjson"
+    summary = CaptureValidationSummary(
+        total_records=12,
+        records_by_kind={"snapshot": 1, "depth_diff": 9, "trade": 2},
+        receipt_timestamp_span_ns=900,
+        silent_gap_count=0,
+        max_silent_gap_ns=None,
+        silence_threshold_ns=5_000_000_000,
+    )
+    provenance = capture_provenance(
+        subscription_for("kraken", "BTC-USD"),
+        raw_path,
+        summary,
+        1_789_000_000_000_000_000,
+        1_789_000_001_000_000_000,
+        "abcdef123456",
+    )
+    metadata_path = raw_path.with_suffix(".metadata.json")
+
+    write_capture_provenance(metadata_path, provenance)
+
+    stored = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert stored["schema_version"] == 1
+    assert stored["venue"] == "kraken"
+    assert stored["instrument"] == "BTC/USD"
+    assert stored["event_count"] == 12
+    assert stored["raw_file"].endswith("2026-09-09/kraken.ndjson")
+    assert stored["normalized_file"] is None
+    assert stored["price_scale"] is None
+    assert stored["quantity_scale"] is None
+    assert stored["receipt_timestamp_field"] == "local_receipt_timestamp_ns"
+    assert stored["sequence_update_fields"] == ["data[].checksum", "data[].trade_id"]
+    assert stored["software_revision"] == "abcdef123456"
+    assert stored["capture_start_utc"].endswith("Z")
+    assert stored["capture_end_utc"].endswith("Z")

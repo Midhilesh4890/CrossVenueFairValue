@@ -1,5 +1,6 @@
 import asyncio
 import json
+import subprocess
 import time
 import urllib.request
 from collections.abc import Callable
@@ -49,6 +50,12 @@ class CaptureValidationSummary:
     silence_threshold_ns: int
 
 
+@dataclass(frozen=True)
+class ProvenanceFields:
+    exchange_timestamp_fields: tuple[str, ...]
+    sequence_update_fields: tuple[str, ...]
+
+
 class AnchoredClock:
     def __init__(
         self,
@@ -92,6 +99,81 @@ def frame_record(
         )
         + "\n"
     )
+
+
+def provenance_fields(venue: str) -> ProvenanceFields:
+    venue_name = venue.lower()
+    if venue_name == "binance":
+        return ProvenanceFields(("E", "T"), ("U", "u", "lastUpdateId", "t"))
+    if venue_name == "coinbase":
+        return ProvenanceFields(("time",), ("sequence", "trade_id"))
+    if venue_name == "kraken":
+        return ProvenanceFields(("data[].timestamp",), ("data[].checksum", "data[].trade_id"))
+    if venue_name == "okx":
+        return ProvenanceFields(("data[].ts",), ("data[].seqId", "data[].tradeId"))
+    raise ValueError(f"unsupported venue: {venue}")
+
+
+def software_revision() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return "unknown"
+    revision = result.stdout.strip()
+    return revision if revision else "unknown"
+
+
+def _utc_timestamp(timestamp_ns: int) -> str:
+    seconds, nanoseconds = divmod(timestamp_ns, 1_000_000_000)
+    timestamp = datetime.fromtimestamp(seconds, UTC)
+    return f"{timestamp:%Y-%m-%dT%H:%M:%S}.{nanoseconds:09d}Z"
+
+
+def capture_provenance(
+    subscription: Subscription,
+    raw_path: Path,
+    summary: CaptureValidationSummary,
+    capture_start_ns: int,
+    capture_end_ns: int,
+    revision: str,
+) -> dict[str, object]:
+    fields = provenance_fields(subscription.venue)
+    sources = {"websocket": subscription.uri}
+    if subscription.snapshot_uri is not None:
+        sources["snapshot"] = subscription.snapshot_uri
+    return {
+        "schema_version": 1,
+        "venue": subscription.venue,
+        "instrument": subscription.instrument,
+        "source": sources,
+        "capture_start_utc": _utc_timestamp(capture_start_ns),
+        "capture_end_utc": _utc_timestamp(capture_end_ns),
+        "capture_start_timestamp_ns": capture_start_ns,
+        "capture_end_timestamp_ns": capture_end_ns,
+        "event_count": summary.total_records,
+        "records_by_kind": summary.records_by_kind,
+        "raw_file": raw_path.as_posix(),
+        "normalized_file": None,
+        "price_scale": None,
+        "quantity_scale": None,
+        "scale_status": "deferred_to_normalization",
+        "exchange_timestamp_fields": list(fields.exchange_timestamp_fields),
+        "receipt_timestamp_field": "local_receipt_timestamp_ns",
+        "sequence_update_fields": list(fields.sequence_update_fields),
+        "software_revision": revision,
+    }
+
+
+def write_capture_provenance(path: Path, provenance: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    serialized = json.dumps(provenance, indent=2, sort_keys=True) + "\n"
+    path.write_text(serialized, encoding="utf-8", newline="\n")
 
 
 def _append_lines(path: Path, lines: list[str]) -> None:
@@ -575,10 +657,11 @@ async def run_capture(
         raise ValueError("at least one venue is required")
 
     clock = AnchoredClock.start()
+    revision = software_revision()
     capture_start = datetime.fromtimestamp(clock.wall_anchor_ns / 1_000_000_000, UTC)
-    capture_date = capture_start.date().isoformat()
+    capture_id = capture_start.strftime("%Y%m%dT%H%M%S.%fZ")
     paths = {
-        venue: output_directory / capture_date / f"{venue}.ndjson" for venue in selected_venues
+        venue: output_directory / capture_id / f"{venue}.ndjson" for venue in selected_venues
     }
     writers = {venue: BufferedNdjsonWriter(path) for venue, path in paths.items()}
     for writer in writers.values():
@@ -598,4 +681,23 @@ async def run_capture(
                 )
     finally:
         await asyncio.gather(*(writer.close() for writer in writers.values()))
+        capture_end_ns = clock.now_ns()
+        summaries = summarize_capture(paths, 5.0)
+        await asyncio.gather(
+            *(
+                asyncio.to_thread(
+                    write_capture_provenance,
+                    path.with_suffix(".metadata.json"),
+                    capture_provenance(
+                        subscription_for(venue, symbol),
+                        path,
+                        summaries[venue],
+                        clock.wall_anchor_ns,
+                        capture_end_ns,
+                        revision,
+                    ),
+                )
+                for venue, path in paths.items()
+            )
+        )
     return paths
