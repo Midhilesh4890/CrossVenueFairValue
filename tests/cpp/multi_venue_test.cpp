@@ -134,18 +134,29 @@ bool test_fixture_conversion_and_replay() {
     FVL_CHECK(static_cast<bool>(std::getline(sorted, line)));
     std::uint64_t previous_timestamp = 0;
     std::size_t row_count = 0;
+    bool saw_common_scale_okx_price = false;
     while (std::getline(sorted, line)) {
         std::istringstream row{line};
         std::string field;
+        std::uint64_t venue_id = 0;
         for (std::size_t column = 0; column < 5; ++column) {
             FVL_CHECK(static_cast<bool>(std::getline(row, field, ',')));
+            if (column == 2) {
+                venue_id = std::stoull(field);
+            }
         }
         const auto timestamp = std::stoull(field);
         FVL_CHECK(timestamp >= previous_timestamp);
         previous_timestamp = timestamp;
+        FVL_CHECK(static_cast<bool>(std::getline(row, field, ',')));
+        FVL_CHECK(static_cast<bool>(std::getline(row, field, ',')));
+        if (venue_id == 3 && std::stoll(field) == 5'000'000) {
+            saw_common_scale_okx_price = true;
+        }
         ++row_count;
     }
     FVL_CHECK(row_count == 2'259);
+    FVL_CHECK(saw_common_scale_okx_price);
     sorted.close();
 
     std::ifstream normalized{output};

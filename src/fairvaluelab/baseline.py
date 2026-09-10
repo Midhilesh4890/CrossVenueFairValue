@@ -297,7 +297,19 @@ def evaluate_dataset(
         )
         for horizon in target_horizons(dataset)
     ]
-    return split, pd.concat(results, ignore_index=True)
+    combined = pd.concat(results, ignore_index=True)
+    combined["train_partition_rows"] = len(split.train)
+    combined["validation_partition_rows"] = len(split.validation)
+    combined["test_partition_rows"] = len(split.test)
+    combined["purged_train_rows"] = split.purged_train_rows
+    combined["purged_validation_rows"] = split.purged_validation_rows
+    combined["train_start_ns"] = int(split.train["sample_timestamp_ns"].iloc[0])
+    combined["train_end_ns"] = int(split.train["sample_timestamp_ns"].iloc[-1])
+    combined["validation_start_ns"] = int(split.validation["sample_timestamp_ns"].iloc[0])
+    combined["validation_end_ns"] = int(split.validation["sample_timestamp_ns"].iloc[-1])
+    combined["test_start_ns"] = int(split.test["sample_timestamp_ns"].iloc[0])
+    combined["test_end_ns"] = int(split.test["sample_timestamp_ns"].iloc[-1])
+    return split, combined
 
 
 def _format_horizon(horizon_ns: int) -> str:
@@ -313,6 +325,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", required=True, type=Path)
     parser.add_argument("--primary-venue", type=int)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
 
     dataset = load_dataset(args.dataset)
@@ -338,6 +351,10 @@ def main(argv: list[str] | None = None) -> int:
         f"validation={split.purged_validation_rows}"
     )
     print(display[columns].to_string(index=False, float_format=lambda value: f"{value:.6f}"))
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        results.to_csv(args.output, index=False)
+        print(f"results: {args.output}")
     return 0
 
 

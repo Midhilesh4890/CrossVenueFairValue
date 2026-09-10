@@ -118,9 +118,27 @@ def test_dataset_evaluation_and_cli(tmp_path, capsys) -> None:
     split, results = evaluate_dataset(research_dataset())
     assert len(results) == 3
     assert len(split.test) == 15
+    assert (results["train_partition_rows"] == len(split.train)).all()
+    assert (results["validation_partition_rows"] == len(split.validation)).all()
+    assert (results["test_start_ns"] == split.test_start_ns).all()
 
-    assert main(["--dataset", str(path), "--primary-venue", "1"]) == 0
+    output_path = tmp_path / "baseline.csv"
+    assert (
+        main(
+            [
+                "--dataset",
+                str(path),
+                "--primary-venue",
+                "1",
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+    assert len(pd.read_csv(output_path)) == 3
     output = capsys.readouterr().out
     assert "10ms" in output
     assert "local_plus_cross_venue" in output
     assert "purged: train=1, validation=1" in output
+    assert f"results: {output_path}" in output

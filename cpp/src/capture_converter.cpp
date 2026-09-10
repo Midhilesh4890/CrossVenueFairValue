@@ -111,9 +111,9 @@ fairvaluelab::convert_capture_directory(const std::filesystem::path& input,
     sources.push_back(make_source<CoinbaseAdapter>(
         VenueConfig{2, "coinbase", Rational{1, 100}, 100'000'000, 64}, "coinbase.ndjson"));
     sources.push_back(make_source<OkxAdapter>(
-        VenueConfig{3, "okx", Rational{1, 10}, 100'000'000, 64}, "okx.ndjson"));
+        VenueConfig{3, "okx", Rational{1, 100}, 100'000'000, 64}, "okx.ndjson"));
     sources.push_back(make_source<KrakenAdapter>(
-        VenueConfig{4, "kraken", Rational{1, 10}, 100'000'000, 64}, "kraken.ndjson"));
+        VenueConfig{4, "kraken", Rational{1, 100}, 100'000'000, 64}, "kraken.ndjson"));
 
     std::vector<NormalizedEvent> events;
     ConversionReport report;
