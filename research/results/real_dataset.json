@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-09-10T15:17:08.712804Z",
+  "generated_at_utc": "2026-09-10T16:16:51.524387Z",
   "venue_set": [
     "binance",
     "kraken"
@@ -153,6 +153,36 @@
           "0": 1,
           "1": 147,
           "2": 207
+        }
+      },
+      "leakage_validation": "passed"
+    },
+    {
+      "dataset_file": "data/generated/20260909T200632.022951Z/dataset_staleness_500000000.csv",
+      "rows": 355,
+      "staleness_ns": 500000000,
+      "prediction_horizons_ns": [
+        10000000,
+        50000000,
+        100000000,
+        250000000,
+        1000000000
+      ],
+      "missing_target_counts": {
+        "10000000": 1,
+        "50000000": 1,
+        "100000000": 2,
+        "250000000": 5,
+        "1000000000": 20
+      },
+      "valid_venue_counts": {
+        "minimum": 0,
+        "maximum": 2,
+        "mean": 1.5943661971830987,
+        "distribution": {
+          "0": 1,
+          "1": 142,
+          "2": 212
         }
       },
       "leakage_validation": "passed"
