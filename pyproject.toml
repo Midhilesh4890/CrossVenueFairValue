@@ -17,6 +17,7 @@ dependencies = [
 [project.scripts]
 fvl-capture = "fairvaluelab.capture.cli:main"
 fvl-data-quality = "fairvaluelab.data_quality:main"
+fvl-research-dataset = "fairvaluelab.research_dataset:main"
 
 [build-system]
 requires = ["hatchling"]

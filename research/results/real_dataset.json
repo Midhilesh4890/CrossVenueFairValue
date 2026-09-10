@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-09-10T15:17:08.712804Z",
+  "venue_set": [
+    "binance",
+    "kraken"
+  ],
+  "instruments": {
+    "binance": "BTCUSDT",
+    "kraken": "BTC/USD"
+  },
+  "time_period": {
+    "start_timestamp_ns": 1788984392022950900,
+    "end_timestamp_ns": 1788984419759856300,
+    "start_utc": "2026-09-09T20:06:32.022950900Z",
+    "end_utc": "2026-09-09T20:06:59.759856300Z"
+  },
+  "sources": {
+    "binance": {
+      "snapshot": "https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=5000",
+      "websocket": "wss://stream.binance.com:9443/stream?streams=btcusdt@depth@100ms/btcusdt@trade"
+    },
+    "kraken": {
+      "websocket": "wss://ws.kraken.com/v2"
+    }
+  },
+  "source_event_counts": {
+    "binance": 300,
+    "kraken": 300
+  },
+  "source_software_revisions": {
+    "binance": "f8a75e55664fa13ccbf955a34fcc49859f74fbe4",
+    "kraken": "f8a75e55664fa13ccbf955a34fcc49859f74fbe4"
+  },
+  "normalized_file": "data/generated/20260909T200632.022951Z/normalized.csv",
+  "sampling": "clock",
+  "sampling_interval_ns": 50000000,
+  "max_target_delay_ns": 100000000,
+  "variants": [
+    {
+      "dataset_file": "data/generated/20260909T200632.022951Z/dataset_staleness_25000000.csv",
+      "rows": 355,
+      "staleness_ns": 25000000,
+      "prediction_horizons_ns": [
+        10000000,
+        50000000,
+        100000000,
+        250000000,
+        1000000000
+      ],
+      "missing_target_counts": {
+        "10000000": 218,
+        "50000000": 173,
+        "100000000": 173,
+        "250000000": 173,
+        "1000000000": 179
+      },
+      "valid_venue_counts": {
+        "minimum": 0,
+        "maximum": 2,
+        "mean": 0.23661971830985915,
+        "distribution": {
+          "0": 277,
+          "1": 72,
+          "2": 6
+        }
+      },
+      "leakage_validation": "passed"
+    },
+    {
+      "dataset_file": "data/generated/20260909T200632.022951Z/dataset_staleness_50000000.csv",
+      "rows": 355,
+      "staleness_ns": 50000000,
+      "prediction_horizons_ns": [
+        10000000,
+        50000000,
+        100000000,
+        250000000,
+        1000000000
+      ],
+      "missing_target_counts": {
+        "10000000": 2,
+        "50000000": 2,
+        "100000000": 3,
+        "250000000": 6,
+        "1000000000": 21
+      },
+      "valid_venue_counts": {
+        "minimum": 0,
+        "maximum": 2,
+        "mean": 0.8225352112676056,
+        "distribution": {
+          "0": 117,
+          "1": 184,
+          "2": 54
+        }
+      },
+      "leakage_validation": "passed"
+    },
+    {
+      "dataset_file": "data/generated/20260909T200632.022951Z/dataset_staleness_100000000.csv",
+      "rows": 355,
+      "staleness_ns": 100000000,
+      "prediction_horizons_ns": [
+        10000000,
+        50000000,
+        100000000,
+        250000000,
+        1000000000
+      ],
+      "missing_target_counts": {
+        "10000000": 1,
+        "50000000": 1,
+        "100000000": 2,
+        "250000000": 5,
+        "1000000000": 20
+      },
+      "valid_venue_counts": {
+        "minimum": 0,
+        "maximum": 2,
+        "mean": 1.4281690140845071,
+        "distribution": {
+          "0": 1,
+          "1": 201,
+          "2": 153
+        }
+      },
+      "leakage_validation": "passed"
+    },
+    {
+      "dataset_file": "data/generated/20260909T200632.022951Z/dataset_staleness_250000000.csv",
+      "rows": 355,
+      "staleness_ns": 250000000,
+      "prediction_horizons_ns": [
+        10000000,
+        50000000,
+        100000000,
+        250000000,
+        1000000000
+      ],
+      "missing_target_counts": {
+        "10000000": 1,
+        "50000000": 1,
+        "100000000": 2,
+        "250000000": 5,
+        "1000000000": 20
+      },
+      "valid_venue_counts": {
+        "minimum": 0,
+        "maximum": 2,
+        "mean": 1.580281690140845,
+        "distribution": {
+          "0": 1,
+          "1": 147,
+          "2": 207
+        }
+      },
+      "leakage_validation": "passed"
+    }
+  ]
+}
