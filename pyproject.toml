@@ -21,6 +21,7 @@ fvl-research-dataset = "fairvaluelab.research_dataset:main"
 fvl-cross-venue-study = "fairvaluelab.cross_venue_study:main"
 fvl-lead-lag = "fairvaluelab.lead_lag:main"
 fvl-reference-study = "fairvaluelab.reference_study:main"
+fvl-ablation = "fairvaluelab.ablation:main"
 
 [build-system]
 requires = ["hatchling"]
