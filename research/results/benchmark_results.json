@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-09-12T14:13:42.599420Z",
+  "machine_specific": true,
+  "cpu": "11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz",
+  "os": "Windows-11-10.0.26200-SP0",
+  "compiler_path": "C:/msys64/mingw64/bin/c++.exe",
+  "compiler_version": "c++.exe (Rev13, Built by MSYS2 project) 15.2.0",
+  "build_configuration": "Release",
+  "software_revision": "fe3d6505e38ef91583fea2d6b4c993a0983200ca",
+  "methodology": "one_unrecorded_warmup_then_repeated_end_to_end_timed_runs",
+  "latency_percentiles": "not_measured",
+  "results": [
+    {
+      "benchmark": "order_book_update",
+      "event_count": 5000000,
+      "repetitions": 5,
+      "mean_ns_per_event": 71.1626,
+      "median_run_ns_per_event": 72.543,
+      "minimum_run_ns_per_event": 65.66,
+      "maximum_run_ns_per_event": 73.41,
+      "mean_events_per_second": 14076042.4728,
+      "checksum": 1207.0
+    },
+    {
+      "benchmark": "feature_and_cross_venue",
+      "event_count": 5000000,
+      "repetitions": 5,
+      "mean_ns_per_event": 1034.566,
+      "median_run_ns_per_event": 991.15,
+      "minimum_run_ns_per_event": 772.44,
+      "maximum_run_ns_per_event": 1372.0,
+      "mean_events_per_second": 1015779.588,
+      "checksum": 50154984996.0
+    }
+  ]
+}

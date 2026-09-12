@@ -24,6 +24,7 @@ fvl-reference-study = "fairvaluelab.reference_study:main"
 fvl-ablation = "fairvaluelab.ablation:main"
 fvl-staleness = "fairvaluelab.staleness:main"
 fvl-latency = "fairvaluelab.latency:main"
+fvl-benchmark-report = "fairvaluelab.benchmark_report:main"
 
 [build-system]
 requires = ["hatchling"]
