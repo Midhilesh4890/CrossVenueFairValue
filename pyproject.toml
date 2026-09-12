@@ -26,6 +26,7 @@ fvl-staleness = "fairvaluelab.staleness:main"
 fvl-latency = "fairvaluelab.latency:main"
 fvl-benchmark-report = "fairvaluelab.benchmark_report:main"
 fvl-latency-power = "fairvaluelab.latency_power:main"
+fvl-regime = "fairvaluelab.regime:main"
 
 [build-system]
 requires = ["hatchling"]
