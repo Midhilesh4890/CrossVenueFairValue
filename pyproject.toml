@@ -29,6 +29,7 @@ fvl-benchmark-report = "fairvaluelab.benchmark_report:main"
 fvl-latency-power = "fairvaluelab.latency_power:main"
 fvl-regime = "fairvaluelab.regime:main"
 fvl-visualize = "fairvaluelab.visualizations:main"
+fvl-research = "fairvaluelab.research_workflow:main"
 
 [build-system]
 requires = ["hatchling"]
