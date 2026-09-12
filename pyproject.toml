@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "matplotlib>=3.11.2",
     "numpy>=2.5.3",
     "pandas>=3.0.5",
     "scikit-learn>=1.9.0",
@@ -27,6 +28,7 @@ fvl-latency = "fairvaluelab.latency:main"
 fvl-benchmark-report = "fairvaluelab.benchmark_report:main"
 fvl-latency-power = "fairvaluelab.latency_power:main"
 fvl-regime = "fairvaluelab.regime:main"
+fvl-visualize = "fairvaluelab.visualizations:main"
 
 [build-system]
 requires = ["hatchling"]
