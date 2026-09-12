@@ -1,115 +1,57 @@
 # FairValueLab
 
-FairValueLab is a C++20 and Python 3.12 platform for deterministic market-microstructure
-research, cross-venue synchronization, and short-horizon fair-value estimation. It does not
-connect to live venues or submit orders.
+## Cross-Venue Fair-Value Forecasting from Limit-Order-Book Events
 
-## Implemented functionality
+FairValueLab is a C++20 and Python 3.12 market-microstructure research system for capturing public multi-venue L2 data, replaying it in local receipt-time order, building leakage-safe synchronized datasets, and testing short-horizon fair-value relationships.
 
-- Integer-tick normalized book updates and trades, with local receipt and exchange timestamps.
-- Venue adapters, capture validation, raw-capture conversion, and deterministic multi-venue replay.
-- A fixed-capacity L2 `OrderBook` with accepted, duplicate, stale, gap, and invalid-update handling.
-- `FeatureEmitter` event and clock sampling with spread, mid, microprice, L1/L3/L5 imbalance,
-  depth, book slope, OFI, multi-level OFI, and signed trade-flow features.
-- Fixed-capacity rolling histories and allocation-tested book, feature, and synchronized update
-  paths.
-- Receipt-time synchronization of the latest valid state for configured venues, including explicit
-  freshness, age, consolidated references, cross-market basis, pairwise, and lead-lag features.
-- Leakage-safe, multi-horizon fair-value targets and an auditable CSV research-dataset generator.
-- Python dataset validation, missing-value and target summaries, chronological splitting, and
-  fixed Ridge/logistic-regression baselines.
+The committed empirical study analyzes Binance `BTCUSDT` and Kraken `BTC/USD`: 600 public source messages expanding to 14,487 normalized book and trade events over approximately 27.7 seconds on 2026-09-09. It evaluates 10 ms, 50 ms, 100 ms, 250 ms, and 1 second forecast horizons. The different USD and USDT quote currencies are an explicit limitation.
 
-The committed fixtures are synthetic and deterministic. They are not presented as real market
-data.
+## Key findings
 
-## Build and test
+- The current capture does not establish that cross-venue features improve prediction. All purged chronological test horizons have zero target variance, so IC is undefined and no predictive improvement is supported.
+- The local-plus-cross-venue Ridge model has worse descriptive MAE than the local model at 10, 50, 100, and 250 ms. It has lower MAE at 1 second, but the constant test target prevents treating that result as evidence of predictive value.
+- The top-of-book Ridge feature set has the lowest descriptive test MAE at all five horizons. Larger cumulative feature groups do not beat it on this split.
+- Defined lead-lag correlations range from -0.0171 to 0.0381; no consistent venue leader is visible.
+- Microprice does not consistently outperform midpoint across references and horizons.
+- Two-venue coverage rises from 1.69% with a 25 ms freshness threshold to 59.72% with 500 ms, demonstrating a measurable coverage-versus-freshness tradeoff.
+- Offline signal decay, regime dependence, and whether additional computation is worthwhile remain unassessable because the held-out outcomes lack variation.
 
-Install [`uv`](https://docs.astral.sh/uv/) and a C++20 compiler with CMake 3.20 or newer. Python
-dependencies are defined by `pyproject.toml` and `uv.lock`:
+These are deliberately limited conclusions from a short capture, not universal claims about cross-venue information. See the complete [findings](research/findings.md), [negative results](research/negative_results.md), and [methodology](research/methodology.md).
 
-```console
-uv sync
-uv run ruff check .
-uv run pytest
-```
+![Local and cross-venue Ridge MAE across horizons](research/figures/cross_venue_mae.png)
 
-Configure, build, and test C++ in Release mode:
-
-```console
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-ctest --test-dir build -C Release --output-on-failure
-```
-
-## Data flow and tools
-
-The research path is:
+## Architecture
 
 ```text
-normalized events
-    -> per-venue order books
-    -> per-venue microstructure features
-    -> receipt-time-aligned cross-venue state
-    -> future fair-value targets
-    -> research CSV
+public venue feeds
+    -> bounded raw capture + provenance
+    -> venue-specific validation and normalization
+    -> integer-tick C++ order books
+    -> per-venue backward-looking features
+    -> receipt-time cross-venue synchronization
+    -> clock- or event-sampled research rows
+    -> leakage-safe future targets
+    -> chronological statistical studies
+    -> result tables and figures
 ```
 
-Raw fixture capture files can be validated and converted to the normalized schema before replay:
+The core provides:
 
-```console
-./build/fvl_validate_capture data/fixtures/multi_venue
-./build/fvl_convert_capture data/fixtures/multi_venue build/normalized.csv
-./build/fvl_multi_replay build/normalized.csv --snapshot-interval 1000
-./build/fvl_features build/normalized.csv build/features.csv --clock-interval-ns 50000000
-```
+- fixed-capacity L2 books with explicit accepted, duplicate, stale, gap, and invalid-update handling;
+- public Binance and Kraken capture with duration and event bounds, local receipt timestamps, raw payload preservation, and JSON provenance;
+- venue-aware normalization into integer ticks and scaled integer quantities;
+- deterministic multi-venue replay ordered by local receipt time;
+- event and clock sampling with spread, depth, microprice, L1/L3/L5 imbalance, OFI, multi-level OFI, trade flow, freshness, basis, pairwise, and lead-lag fields;
+- consolidated midpoint and microprice references built only from valid fresh venues;
+- configurable multi-horizon targets and validation in both C++ and Python;
+- fixed Ridge and logistic baselines, cross-venue comparison, block-bootstrap uncertainty, reference comparison, ablation, staleness, offline latency, and regime studies;
+- machine-specific C++ benchmarks and reproducible figures.
 
-Generate a machine-readable quality report from a raw capture directory:
+## Research methodology
 
-```console
-uv run python -m fairvaluelab.data_quality data/capture/<capture-id> --output research/results/data_quality.json
-```
+Local receipt time is the synchronization timeline. Exchange timestamps are retained for auditing and within-venue fields but are not assumed to be synchronized across venues. At sample time `t`, a venue contributes only when its latest valid two-sided state is no later than `t` and no older than the configured freshness threshold. Missing or stale values remain undefined rather than being replaced with zero.
 
-Generate a clock-sampled cross-venue dataset with configurable staleness, horizons, and maximum
-target delay:
-
-```console
-./build/fvl_dataset \
-  --input data/fixtures/multi_venue_updates.csv \
-  --output data/generated/research_dataset.csv \
-  --sampling clock \
-  --clock-ns 50000000 \
-  --max-staleness-ns 100000000 \
-  --horizons-ns 10000000,50000000,100000000,250000000,1000000000 \
-  --max-target-delay-ns 50000000
-```
-
-`--sampling event` is available, but clock sampling is recommended for cross-venue research so a
-high-activity venue does not determine the observation count. Add `--discard-missing-targets` to
-remove rows lacking any configured horizon; by default they remain with empty target fields.
-
-Validate the output and run the statistical baseline with:
-
-```console
-uv run python -m fairvaluelab.dataset data/generated/research_dataset.csv
-uv run python -m fairvaluelab.baseline --dataset data/generated/research_dataset.csv
-```
-
-On Windows, invoke the corresponding `.exe` files in the selected CMake output directory.
-
-## Synchronization and target semantics
-
-Local receipt time is the only synchronization timeline. At sample time `t`, a venue is usable
-when it has been observed, its latest receipt timestamp is not later than `t`, its age
-`t - latest_receipt_timestamp` is no greater than `max_staleness_ns`, and its book is valid and
-two-sided. Stale or missing inputs stay undefined; they are never replaced with zero. Consolidated
-mid and microprice are unweighted means over their valid fresh contributors, and contributor counts
-are written with every row. Pairwise fields use the configured `A - B` orientation and require both
-venues to be fresh.
-
-For sample time `t` and horizon `h`, the target is the first valid synchronized sample whose
-timestamp is at least `t + h`. A sample before the horizon is never selected. The target remains
-undefined when none occurs within the inclusive `max_target_delay_ns`. Every row records target
-timestamp and delay, and validators enforce:
+For horizon `h`, the target is the first valid synchronized observation at or after `t + h`, subject to a maximum observation delay. Validators enforce:
 
 ```text
 feature receipt timestamp <= sample timestamp
@@ -117,44 +59,103 @@ target timestamp >= sample timestamp + horizon
 target delay = target timestamp - (sample timestamp + horizon)
 ```
 
-Feature histories are backward-looking. Target alignment runs only after current samples have been
-materialized and cannot mutate their features.
+Fitted studies use ordered 70% train, 15% validation, and 15% test partitions. Equal timestamps are not split. Training and validation rows are purged when their future targets cross the next partition boundary. Regime thresholds come only from the purged training partition. No random time-series split is used.
 
-## Baseline methodology
+The source assessment, exact normalization rules, feature definitions, target alignment, metrics, uncertainty method, and experiment limitations are documented in [research/methodology.md](research/methodology.md). Committed machine-readable outputs live under [`research/results/`](research/results/).
 
-The baseline compares one primary venue's microprice deviation, its local microstructure features,
-and local plus cross-venue features. Ridge regression reports MAE, R-squared, and Pearson
-correlation. Logistic regression reports accuracy, balanced accuracy, and binary up/down ROC AUC
-when both classes are present. These fixed models are intended as dataset checks, not performance
-claims.
+## Measured results
 
-Splits use nominal chronological row boundaries of 70% training, 15% validation, and 15% test,
-adjusted so equal sample timestamps are never divided. Training rows are purged when any configured
-target reaches the validation boundary; validation rows are purged when any target reaches the test
-boundary. The final fixed-model fit uses the remaining training and validation rows; metrics are
-reported only on the later test partition. No random split is used.
+The main Ridge comparison uses 13 local features and 44 local-plus-cross-venue features:
 
-## Allocation and performance notes
+| Horizon | Local MAE | Cross-venue MAE | Cross minus local | Test target std. dev. | Conclusion |
+|---:|---:|---:|---:|---:|---|
+| 10 ms | 123.27 | 960.85 | +837.58 | 0.00 | Insufficient variation |
+| 50 ms | 123.27 | 960.85 | +837.58 | 0.00 | Insufficient variation |
+| 100 ms | 147.67 | 1,193.37 | +1,045.70 | 0.00 | Insufficient variation |
+| 250 ms | 248.88 | 1,084.07 | +835.19 | 0.00 | Insufficient variation |
+| 1 s | 382.80 | 229.65 | -153.15 | 0.00 | Insufficient variation |
 
-`OrderBook`, `FeatureEmitter`, and `CrossVenueSynchronizer` use bounded, preallocated storage in
-their steady-state update paths. Caller-owned output spans/vectors are used where applicable.
-Construction, returning convenience overloads, research-row materialization, target alignment, CSV
-parsing, and serialization may allocate. Dedicated tests assert zero allocations for the paths that
-carry that guarantee.
+MAE is in normalized price ticks. Positive delta means the cross-venue model is worse. The committed [cross-venue results](research/results/cross_venue_results.csv) include paired time-block bootstrap intervals and directional fields.
 
-Run deterministic Release benchmarks with inputs generated before timing:
+![Cross-venue coverage versus freshness threshold](research/figures/staleness_coverage.png)
+
+## Performance
+
+The committed Release benchmark was measured on an 11th Gen Intel Core i5-1135G7 running Windows 11, using GCC 15.2 from MSYS2. Each path processed 5,000,000 generated events in five timed repetitions after one unrecorded warm-up.
+
+| Path | Mean latency | Mean throughput |
+|---|---:|---:|
+| Order-book update | 71.16 ns/event | 14.08 million events/s |
+| Feature generation and cross-venue synchronization | 1,034.57 ns/event | 1.02 million events/s |
+
+Percentiles were not measured. These results are machine-specific and exclude public-network, exchange, and capture latency. Full metadata and run ranges are in [benchmark_results.json](research/results/benchmark_results.json).
+
+## Build and test
+
+Install [uv](https://docs.astral.sh/uv/), CMake 3.20 or newer, and a C++20 compiler.
 
 ```console
-./build/fvl_order_book_benchmark --events 1000000
-./build/fvl_cross_venue_benchmark --events 1000000
+uv sync
+uv run ruff check .
+uv run pytest
+
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-Both report elapsed time, throughput, average nanoseconds per event, and checksums. Results depend
-on compiler, hardware, build configuration, and system load and should be measured locally.
+On Windows, the generated C++ tools have an `.exe` suffix.
 
-## Design boundaries
+## Capture public data
 
-Prices use signed 64-bit integer ticks; quantities, sequence numbers, and timestamps use unsigned
-64-bit integers. A full fixed-depth book discards an out-of-range price or evicts its current worst
-level. Sequence gaps do not mutate the book or advance its sequence. Exchange timestamps are kept
-for auditing and optional lead-lag fields but are not treated as comparable across venues.
+Capture is research-only, unauthenticated, and bounded. Raw files are written beneath the gitignored `data/capture/` directory.
+
+```console
+uv run fvl-capture \
+  --symbol BTC-USD \
+  --venues binance kraken \
+  --duration-seconds 600 \
+  --max-events 10000 \
+  --validate
+```
+
+Public endpoint behavior and regional availability can change. Review [research/data_sources.md](research/data_sources.md) before a new capture campaign. The tool does not submit orders or connect to authenticated trading APIs.
+
+## Reproduce the experiments
+
+After building the Release C++ targets and obtaining a capture, one command regenerates data-quality output, clock and event datasets, leakage checks, all statistical studies, benchmarks, and figures:
+
+```console
+uv run fvl-research data/capture/<capture-id> \
+  --build-directory build \
+  --generated-directory data/generated/research \
+  --results-directory research/results \
+  --figures-directory research/figures
+```
+
+Use `--dry-run` to inspect the complete command sequence without writing outputs. Benchmark size can be adjusted with `--benchmark-events` and `--benchmark-repetitions`; changing those values produces a different machine-specific benchmark experiment.
+
+Individual tools remain available for focused work:
+
+```console
+uv run fvl-data-quality data/capture/<capture-id> --output research/results/data_quality.json
+uv run fvl-research-dataset data/capture/<capture-id> --build-directory build
+uv run python -m fairvaluelab.dataset data/generated/research/dataset_staleness_100000000.csv
+uv run fvl-cross-venue-study --dataset <dataset.csv> --output <results.csv>
+uv run fvl-visualize
+```
+
+Large raw captures and generated datasets are intentionally excluded from Git. The repository contains source code, deterministic fixtures, compact provenance and result files, documentation, and reproducible figures.
+
+## Limitations
+
+- The committed empirical sample is only 27.7 seconds long.
+- The venues expose related but non-identical quote instruments.
+- Venue message and trade activity are strongly asymmetric.
+- The purged held-out target is constant at every forecast horizon.
+- Tight freshness settings leave too few synchronized test observations.
+- Live public capture reproduces a procedure, not identical historical events.
+- Reported computation benchmarks are specific to one machine and software build.
+- The study measures association and prediction, not causality or execution outcomes.
+
+Until a materially longer synchronized capture produces varied held-out targets, model and feature comparisons should be treated as pipeline diagnostics rather than evidence of a market signal.
