@@ -1,13 +1,19 @@
 #include "fairvaluelab/venue.hpp"
 #include "fairvaluelab/venue_adapter.hpp"
+#include "fairvaluelab/venue_adapters.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <limits>
+#include <string>
 #include <type_traits>
+#include <vector>
 
 using fairvaluelab::BookUpdate;
+using fairvaluelab::AdapterStatus;
+using fairvaluelab::KrakenAdapter;
 using fairvaluelab::price_to_ticks;
 using fairvaluelab::Quantity;
 using fairvaluelab::Rational;
@@ -86,6 +92,20 @@ bool test_quantity_scaling_limits() {
     return true;
 }
 
+bool test_kraken_numeric_quantities_are_exact() {
+    std::ifstream input{FVL_KRAKEN_NUMERIC_FIXTURE_PATH};
+    std::string line;
+    FVL_CHECK(static_cast<bool>(std::getline(input, line)));
+
+    KrakenAdapter adapter{VenueConfig{2, "kraken", Rational{1, 10}, 100'000'000, 10}};
+    std::vector<BookUpdate> updates;
+    FVL_CHECK(adapter.normalize(line, updates) == AdapterStatus::Accepted);
+    FVL_CHECK(updates.size() == 2);
+    FVL_CHECK(updates[0].quantity == 4'145'246);
+    FVL_CHECK(updates[1].quantity == 3'439'124);
+    return true;
+}
+
 struct TestCase {
     const char* name;
     bool (*run)();
@@ -100,6 +120,7 @@ int main() {
         {"non-integral and invalid tick conversion", test_non_integral_and_invalid_tick_conversion},
         {"tick conversion limits", test_tick_conversion_limits},
         {"quantity scaling limits", test_quantity_scaling_limits},
+        {"kraken numeric quantities are exact", test_kraken_numeric_quantities_are_exact},
     };
 
     std::size_t passed = 0;

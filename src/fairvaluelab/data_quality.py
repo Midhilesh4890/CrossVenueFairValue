@@ -125,6 +125,11 @@ def _apply_levels(book: dict[Decimal, Decimal], levels: list[tuple[Decimal, Deci
             book[price] = quantity
 
 
+def _truncate_depth(book: dict[Decimal, Decimal], *, reverse: bool, depth: int) -> None:
+    for price in sorted(book, reverse=reverse)[depth:]:
+        book.pop(price, None)
+
+
 def _observe_book(state: VenueState) -> None:
     if not state.bids or not state.asks:
         return
@@ -200,6 +205,8 @@ def _process_kraken(state: VenueState, payload: dict[str, Any], kind: str) -> No
                 raise ValueError("invalid Kraken book entry")
             _apply_levels(state.bids, _levels(entry.get("bids"), True))
             _apply_levels(state.asks, _levels(entry.get("asks"), True))
+            _truncate_depth(state.bids, reverse=True, depth=10)
+            _truncate_depth(state.asks, reverse=False, depth=10)
             _integer(entry.get("checksum"))
         state.book_updates += 1
         _observe_book(state)

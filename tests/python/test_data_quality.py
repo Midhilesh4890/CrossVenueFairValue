@@ -121,3 +121,11 @@ def test_build_report_reads_capture_envelopes(tmp_path: Path) -> None:
     assert kraken["missing_timestamps"] == 1
     assert report["input_files"] == [capture.as_posix()]
     assert report["generated_at_utc"].endswith("Z")
+
+
+def test_kraken_book_quality_truncates_to_subscribed_depth() -> None:
+    report = build_report(Path("data/fixtures/kraken_depth_truncation.ndjson"))
+    kraken = report["venues"]["kraken"]
+
+    assert kraken["book_updates"] == 3
+    assert kraken["visible_depth"]["max"] == 20.0

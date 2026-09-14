@@ -4,6 +4,7 @@
 
 #include <charconv>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <numeric>
@@ -17,6 +18,7 @@ namespace {
 
 using fairvaluelab::AdapterStatus;
 using fairvaluelab::BookUpdate;
+using fairvaluelab::PriceTicks;
 using fairvaluelab::Quantity;
 using fairvaluelab::Rational;
 using fairvaluelab::Side;
@@ -134,14 +136,45 @@ std::optional<Rational> parse_decimal(const std::string_view value) {
     return Rational{negative ? -numerator : numerator, denominator};
 }
 
-std::optional<std::string> decimal_text(const Json& value) {
+std::optional<Quantity> parse_quantity(std::string_view value, Quantity scale_factor);
+
+std::optional<PriceTicks> parse_price_ticks(const Json& value, const Rational tick_size) {
     if (value.is_string()) {
-        return value.get<std::string>();
+        const auto rational_price = parse_decimal(value.get_ref<const std::string&>());
+        return rational_price.has_value() ? fairvaluelab::price_to_ticks(*rational_price, tick_size)
+                                          : std::nullopt;
     }
-    if (value.is_number()) {
-        return value.dump();
+    if (!value.is_number() || tick_size.numerator <= 0 || tick_size.denominator == 0) {
+        return std::nullopt;
     }
-    return std::nullopt;
+    const auto ticks = value.get<long double>() *
+                       static_cast<long double>(tick_size.denominator) /
+                       static_cast<long double>(tick_size.numerator);
+    const auto rounded = std::round(ticks);
+    if (!std::isfinite(ticks) || std::fabs(ticks - rounded) > 1e-6L ||
+        rounded < static_cast<long double>(std::numeric_limits<PriceTicks>::min()) ||
+        rounded > static_cast<long double>(std::numeric_limits<PriceTicks>::max())) {
+        return std::nullopt;
+    }
+    return static_cast<PriceTicks>(rounded);
+}
+
+std::optional<Quantity> parse_json_quantity(const Json& value, const Quantity scale_factor) {
+    if (value.is_string()) {
+        return parse_quantity(std::string_view{value.get_ref<const std::string&>()},
+                              scale_factor);
+    }
+    if (!value.is_number() || scale_factor == 0) {
+        return std::nullopt;
+    }
+    const auto quantity = value.get<long double>() * static_cast<long double>(scale_factor);
+    const auto rounded = std::round(quantity);
+    if (!std::isfinite(quantity) || std::fabs(quantity - rounded) > 1e-6L ||
+        rounded < 0.0L ||
+        rounded > static_cast<long double>(std::numeric_limits<Quantity>::max())) {
+        return std::nullopt;
+    }
+    return static_cast<Quantity>(rounded);
 }
 
 std::optional<Quantity> parse_quantity(const std::string_view value,
@@ -248,11 +281,27 @@ std::optional<Envelope> parse_envelope(const std::string_view raw_record) {
 bool append_update(const VenueConfig& config, const Side side, const std::string_view price,
                    const std::string_view quantity, const TimestampNs exchange_timestamp_ns,
                    const TimestampNs receipt_timestamp_ns, std::vector<BookUpdate>& output) {
-    const auto rational_price = parse_decimal(price);
-    const auto price_ticks = rational_price.has_value()
-                                 ? fairvaluelab::price_to_ticks(*rational_price, config.tick_size)
-                                 : std::nullopt;
+    const auto price_ticks = [&]() -> std::optional<PriceTicks> {
+        const auto rational_price = parse_decimal(price);
+        return rational_price.has_value()
+                   ? fairvaluelab::price_to_ticks(*rational_price, config.tick_size)
+                   : std::nullopt;
+    }();
     const auto scaled_quantity = parse_quantity(quantity, config.quantity_scale_factor);
+    if (!price_ticks.has_value() || !scaled_quantity.has_value()) {
+        return false;
+    }
+    output.push_back(BookUpdate{config.venue_id, side, *price_ticks, *scaled_quantity,
+                                exchange_timestamp_ns, receipt_timestamp_ns, 0});
+    return true;
+}
+
+bool append_json_update(const VenueConfig& config, const Side side, const Json& price,
+                        const Json& quantity, const TimestampNs exchange_timestamp_ns,
+                        const TimestampNs receipt_timestamp_ns,
+                        std::vector<BookUpdate>& output) {
+    const auto price_ticks = parse_price_ticks(price, config.tick_size);
+    const auto scaled_quantity = parse_json_quantity(quantity, config.quantity_scale_factor);
     if (!price_ticks.has_value() || !scaled_quantity.has_value()) {
         return false;
     }
@@ -270,6 +319,20 @@ bool append_trade(const VenueConfig& config, const TradeSide side, const std::st
                                  ? fairvaluelab::price_to_ticks(*rational_price, config.tick_size)
                                  : std::nullopt;
     const auto scaled_quantity = parse_quantity(quantity, config.quantity_scale_factor);
+    if (!price_ticks.has_value() || !scaled_quantity.has_value()) {
+        return false;
+    }
+    output.push_back(Trade{config.venue_id, side, *price_ticks, *scaled_quantity,
+                           exchange_timestamp_ns, receipt_timestamp_ns, sequence_number});
+    return true;
+}
+
+bool append_json_trade(const VenueConfig& config, const TradeSide side, const Json& price,
+                       const Json& quantity, const TimestampNs exchange_timestamp_ns,
+                       const TimestampNs receipt_timestamp_ns,
+                       const std::uint64_t sequence_number, std::vector<Trade>& output) {
+    const auto price_ticks = parse_price_ticks(price, config.tick_size);
+    const auto scaled_quantity = parse_json_quantity(quantity, config.quantity_scale_factor);
     if (!price_ticks.has_value() || !scaled_quantity.has_value()) {
         return false;
     }
@@ -701,23 +764,17 @@ AdapterStatus fairvaluelab::KrakenAdapter::normalize(const std::string_view raw_
                 return AdapterStatus::Malformed;
             }
             for (const auto& level : bids) {
-                const auto price = decimal_text(level.at("price"));
-                const auto quantity = decimal_text(level.at("qty"));
-                if (!price.has_value() || !quantity.has_value() ||
-                    !append_update(config_, Side::Bid, *price, *quantity,
-                                   *exchange_timestamp_ns, envelope->local_receipt_timestamp_ns,
-                                   output)) {
+                if (!append_json_update(config_, Side::Bid, level.at("price"),
+                                        level.at("qty"), *exchange_timestamp_ns,
+                                        envelope->local_receipt_timestamp_ns, output)) {
                     output.clear();
                     return AdapterStatus::Malformed;
                 }
             }
             for (const auto& level : asks) {
-                const auto price = decimal_text(level.at("price"));
-                const auto quantity = decimal_text(level.at("qty"));
-                if (!price.has_value() || !quantity.has_value() ||
-                    !append_update(config_, Side::Ask, *price, *quantity,
-                                   *exchange_timestamp_ns, envelope->local_receipt_timestamp_ns,
-                                   output)) {
+                if (!append_json_update(config_, Side::Ask, level.at("price"),
+                                        level.at("qty"), *exchange_timestamp_ns,
+                                        envelope->local_receipt_timestamp_ns, output)) {
                     output.clear();
                     return AdapterStatus::Malformed;
                 }
@@ -759,15 +816,12 @@ AdapterStatus fairvaluelab::KrakenAdapter::normalize_trades(
             const auto side = side_value == "buy"    ? std::optional{TradeSide::Buy}
                               : side_value == "sell" ? std::optional{TradeSide::Sell}
                                                      : std::nullopt;
-            const auto price = decimal_text(trade.at("price"));
-            const auto quantity = decimal_text(trade.at("qty"));
             const auto exchange_timestamp_ns =
                 iso_timestamp_to_ns(trade.at("timestamp").get_ref<const std::string&>());
-            if (!side.has_value() || !price.has_value() || !quantity.has_value() ||
-                !exchange_timestamp_ns.has_value() ||
-                !append_trade(config_, *side, *price, *quantity, *exchange_timestamp_ns,
-                              envelope->local_receipt_timestamp_ns,
-                              trade.at("trade_id").get<std::uint64_t>(), output)) {
+            if (!side.has_value() || !exchange_timestamp_ns.has_value() ||
+                !append_json_trade(config_, *side, trade.at("price"), trade.at("qty"),
+                                   *exchange_timestamp_ns, envelope->local_receipt_timestamp_ns,
+                                   trade.at("trade_id").get<std::uint64_t>(), output)) {
                 output.clear();
                 return AdapterStatus::Malformed;
             }

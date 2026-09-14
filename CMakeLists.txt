@@ -122,6 +122,10 @@ if(BUILD_TESTING)
 
     add_executable(fvl_venue_test tests/cpp/venue_test.cpp)
     target_link_libraries(fvl_venue_test PRIVATE FairValueLab::order_book)
+    target_compile_definitions(
+        fvl_venue_test
+        PRIVATE FVL_KRAKEN_NUMERIC_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/data/fixtures/kraken_numeric_quantity.ndjson"
+    )
     fvl_enable_warnings(fvl_venue_test)
     fvl_enable_sanitizers(fvl_venue_test)
     add_test(NAME venue COMMAND fvl_venue_test)

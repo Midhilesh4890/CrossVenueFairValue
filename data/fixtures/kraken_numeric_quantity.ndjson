@@ -1,0 +1,1 @@
+{"venue":"kraken","record_kind":"snapshot","local_receipt_timestamp_ns":1000,"raw_payload":"{\"channel\":\"book\",\"type\":\"snapshot\",\"data\":[{\"symbol\":\"BTC/USD\",\"bids\":[{\"price\":77898.6,\"qty\":0.04145246}],\"asks\":[{\"price\":77898.7,\"qty\":0.03439124}],\"checksum\":1,\"timestamp\":\"2026-09-14T00:00:00Z\"}]}"}
