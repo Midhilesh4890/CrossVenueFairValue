@@ -1,16 +1,16 @@
 {
-  "generated_at_utc": "2026-09-09T20:11:59.661165Z",
+  "generated_at_utc": "2026-09-14T17:14:06.674483Z",
   "input_files": [
-    "data/capture/20260909T200632.022951Z/binance.ndjson",
-    "data/capture/20260909T200632.022951Z/kraken.ndjson"
+    "data/capture/20260914T122148.319244Z/binance.ndjson",
+    "data/capture/20260914T122148.319244Z/kraken.ndjson"
   ],
   "input_provenance": [
     {
-      "capture_end_timestamp_ns": 1788984419759856300,
-      "capture_end_utc": "2026-09-09T20:06:59.759856300Z",
-      "capture_start_timestamp_ns": 1788984392022950900,
-      "capture_start_utc": "2026-09-09T20:06:32.022950900Z",
-      "event_count": 300,
+      "capture_end_timestamp_ns": 1789390314775021700,
+      "capture_end_utc": "2026-09-14T12:51:54.775021700Z",
+      "capture_start_timestamp_ns": 1789388508319243800,
+      "capture_start_utc": "2026-09-14T12:21:48.319243800Z",
+      "event_count": 97214,
       "exchange_timestamp_fields": [
         "E",
         "T"
@@ -19,12 +19,12 @@
       "normalized_file": null,
       "price_scale": null,
       "quantity_scale": null,
-      "raw_file": "data/capture/20260909T200632.022951Z/binance.ndjson",
+      "raw_file": "data/capture/20260914T122148.319244Z/binance.ndjson",
       "receipt_timestamp_field": "local_receipt_timestamp_ns",
       "records_by_kind": {
-        "depth_diff": 178,
+        "depth_diff": 17989,
         "snapshot": 1,
-        "trade": 121
+        "trade": 79224
       },
       "scale_status": "deferred_to_normalization",
       "schema_version": 1,
@@ -34,7 +34,7 @@
         "lastUpdateId",
         "t"
       ],
-      "software_revision": "f8a75e55664fa13ccbf955a34fcc49859f74fbe4",
+      "software_revision": "624423d76bfa2dd94057a92b8331fb57d6a05b72",
       "source": {
         "snapshot": "https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=5000",
         "websocket": "wss://stream.binance.com:9443/stream?streams=btcusdt@depth@100ms/btcusdt@trade"
@@ -42,11 +42,11 @@
       "venue": "binance"
     },
     {
-      "capture_end_timestamp_ns": 1788984419759856300,
-      "capture_end_utc": "2026-09-09T20:06:59.759856300Z",
-      "capture_start_timestamp_ns": 1788984392022950900,
-      "capture_start_utc": "2026-09-09T20:06:32.022950900Z",
-      "event_count": 300,
+      "capture_end_timestamp_ns": 1789390314775021700,
+      "capture_end_utc": "2026-09-14T12:51:54.775021700Z",
+      "capture_start_timestamp_ns": 1789388508319243800,
+      "capture_start_utc": "2026-09-14T12:21:48.319243800Z",
+      "event_count": 114327,
       "exchange_timestamp_fields": [
         "data[].timestamp"
       ],
@@ -54,13 +54,13 @@
       "normalized_file": null,
       "price_scale": null,
       "quantity_scale": null,
-      "raw_file": "data/capture/20260909T200632.022951Z/kraken.ndjson",
+      "raw_file": "data/capture/20260914T122148.319244Z/kraken.ndjson",
       "receipt_timestamp_field": "local_receipt_timestamp_ns",
       "records_by_kind": {
-        "depth_diff": 284,
-        "other": 13,
+        "depth_diff": 110909,
+        "other": 1800,
         "snapshot": 1,
-        "trade": 2
+        "trade": 1617
       },
       "scale_status": "deferred_to_normalization",
       "schema_version": 1,
@@ -68,7 +68,7 @@
         "data[].checksum",
         "data[].trade_id"
       ],
-      "software_revision": "f8a75e55664fa13ccbf955a34fcc49859f74fbe4",
+      "software_revision": "624423d76bfa2dd94057a92b8331fb57d6a05b72",
       "source": {
         "websocket": "wss://ws.kraken.com/v2"
       },
@@ -79,37 +79,37 @@
   "schema_version": 1,
   "venues": {
     "binance": {
-      "book_updates": 179,
-      "capture_duration_ns": 17626275700,
+      "book_updates": 17990,
+      "capture_duration_ns": 1798693354300,
       "continuity_limitation": "source_sequence_checked_when_available",
       "crossed_books": 0,
       "duplicates": 0,
-      "events": 300,
+      "events": 97214,
       "exchange_timestamp_regression_scope": "combined_book_and_trade_message_order",
-      "exchange_timestamp_regressions": 1,
+      "exchange_timestamp_regressions": 58,
       "imbalance": {
-        "count": 179,
-        "max": 0.23811349755800934,
-        "median": 0.22069561248132896,
-        "min": 0.16796744903544422,
-        "p95": 0.23375410028046453,
-        "p99": 0.23694568359774146
+        "count": 17990,
+        "max": 0.46023023835589755,
+        "median": 0.3450582169894777,
+        "min": -0.05459125714479264,
+        "p95": 0.4430678720569775,
+        "p99": 0.45329746228634343
       },
       "inter_arrival_ns": {
-        "count": 298,
-        "max": 116100800,
-        "median": 81318900,
-        "min": 11600,
-        "p95": 102462500,
-        "p99": 111568500
+        "count": 97212,
+        "max": 1892630900,
+        "median": 41100,
+        "min": 10400,
+        "p95": 100172100,
+        "p99": 101402400
       },
       "invalid_events": 0,
       "locked_books": 0,
       "missing_timestamps": 0,
       "sequence_gaps": 0,
       "spread": {
-        "count": 179,
-        "max": 0.01,
+        "count": 17990,
+        "max": 4.66,
         "median": 0.01,
         "min": 0.01,
         "p95": 0.01,
@@ -119,95 +119,95 @@
       "timestamp_regression_field": "local_receipt_timestamp_ns",
       "timestamp_regressions": 1,
       "trade_size": {
-        "count": 121,
-        "max": 0.17258,
-        "median": 0.00012,
+        "count": 79224,
+        "max": 2.31445,
+        "median": 7e-05,
         "min": 1e-05,
-        "p95": 0.013,
-        "p99": 0.03638
+        "p95": 0.00866,
+        "p99": 0.06189
       },
-      "trades": 121,
+      "trades": 79224,
       "venue_age_ns": {
-        "count": 600,
-        "max": 100118100,
-        "median": 0,
+        "count": 211541,
+        "max": 1866928600,
+        "median": 5141400,
         "min": 0,
-        "p95": 91906900,
-        "p99": 98069500
+        "p95": 93435100,
+        "p99": 284264100
       },
       "visible_depth": {
-        "count": 179,
-        "max": 638.36014,
-        "median": 631.99048,
-        "min": 593.36085,
-        "p95": 638.0086,
-        "p99": 638.25946
+        "count": 17990,
+        "max": 5607.46476,
+        "median": 4621.4761,
+        "min": 560.06349,
+        "p95": 5450.33469,
+        "p99": 5589.04565
       }
     },
     "kraken": {
-      "book_updates": 285,
-      "capture_duration_ns": 10433769100,
+      "book_updates": 110910,
+      "capture_duration_ns": 1798354511300,
       "continuity_limitation": "checksum_only_no_numeric_book_sequence",
       "crossed_books": 0,
       "duplicates": null,
-      "events": 300,
+      "events": 114327,
       "exchange_timestamp_regression_scope": "combined_book_and_trade_message_order",
       "exchange_timestamp_regressions": 0,
       "imbalance": {
-        "count": 285,
-        "max": 0.436450315166546,
-        "median": -0.16254791173147698,
-        "min": -0.8341779227897873,
-        "p95": 0.24096236004158172,
-        "p99": 0.43149358999464676
+        "count": 110910,
+        "max": 0.9993831690208774,
+        "median": -0.06907226952009106,
+        "min": -0.9994690222843704,
+        "p95": 0.7949380698374916,
+        "p99": 0.9469393960509229
       },
       "inter_arrival_ns": {
-        "count": 299,
-        "max": 234361500,
-        "median": 2482900,
-        "min": 14100,
-        "p95": 167696300,
-        "p99": 220558100
+        "count": 114326,
+        "max": 1011260300,
+        "median": 146200,
+        "min": 12500,
+        "p95": 82114400,
+        "p99": 216495400
       },
       "invalid_events": 0,
       "locked_books": 0,
       "missing_timestamps": 0,
       "sequence_gaps": null,
       "spread": {
-        "count": 285,
-        "max": 0.1,
+        "count": 110910,
+        "max": 32.4,
         "median": 0.1,
         "min": 0.1,
-        "p95": 0.1,
-        "p99": 0.1
+        "p95": 4.0,
+        "p99": 8.5
       },
       "stale_events": null,
       "timestamp_regression_field": "local_receipt_timestamp_ns",
       "timestamp_regressions": 0,
       "trade_size": {
-        "count": 2,
-        "max": 0.00061406,
-        "median": 0.0002882,
-        "min": 0.0002882,
-        "p95": 0.00061406,
-        "p99": 0.00061406
+        "count": 3198,
+        "max": 1.4458561,
+        "median": 0.00048054,
+        "min": 1.2e-07,
+        "p95": 0.03429466,
+        "p99": 0.4
       },
-      "trades": 2,
+      "trades": 3198,
       "venue_age_ns": {
-        "count": 594,
-        "max": 6935605900,
+        "count": 211528,
+        "max": 989684500,
         "median": 0,
         "min": 0,
-        "p95": 5050939700,
-        "p99": 6482625600
+        "p95": 103670100,
+        "p99": 265207600
       },
       "visible_depth": {
-        "count": 285,
-        "max": 10.01904649,
-        "median": 8.21430739,
-        "min": 5.63662548,
-        "p95": 9.52623228,
-        "p99": 10.01904649
+        "count": 110910,
+        "max": 17.91250153,
+        "median": 4.38974953,
+        "min": 0.23532003,
+        "p95": 7.19084767,
+        "p99": 9.03136743
       }
     }
   }

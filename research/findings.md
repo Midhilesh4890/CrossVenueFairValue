@@ -2,84 +2,60 @@
 
 ## Executive result
 
-The current bounded capture does not establish that cross-venue state improves short-horizon fair-value prediction. This is primarily an evidence limitation, not proof that the relationship is absent: every purged chronological test partition has zero target variance, making IC undefined and preventing a defensible out-of-sample predictive comparison.
-
-The strongest supported result is operational rather than predictive. Relaxing the venue-freshness threshold materially increases synchronized two-venue coverage. The richer feature sets and cross-venue Ridge model generally produced worse descriptive test MAE, while measured lead-lag correlations were near zero. These outcomes should motivate a longer capture, not a positive or universal negative market claim.
+The corrected retained capture spans 30 minutes and yields varied held-out targets at all five horizons. Kraken reconstruction is clean under its top-ten checksum validation. On the primary purged chronological split, the 44-feature local-plus-cross-venue Ridge model has higher MAE and lower IC than the 13-feature local Ridge model at every tested horizon. This particular capture and feature design do not establish incremental predictive value from the current cross-venue features.
 
 ## Dataset studied
 
-The committed study uses 300 Binance `BTCUSDT` events and 300 Kraken `BTC/USD` events captured over approximately 27.7 seconds. Binance contributed 179 book records and 121 trades; Kraken contributed 285 book records and 2 trades, with 13 other protocol records. The 50 ms clock-sampled datasets contain 355 rows. See [real_dataset.json](results/real_dataset.json) and [data_quality.json](results/data_quality.json).
+The 2026-09-14 capture runs from 12:21:48 to 12:51:54 UTC (1,806.456 seconds). It has 97,214 Binance `BTCUSDT` and 114,327 Kraken `BTC/USD` source messages, or 211,541 total. Normalization yields 940,999 events. Kraken has zero crossed books and zero valid source messages rejected; 110,910 checksums match and none mismatch. The primary 50 ms clock dataset contains 35,980 rows. Its chronological partition contains 25,166 train, 5,377 validation, and 5,397 test rows before horizon-specific purging and eligibility filters. See [real_dataset.json](results/real_dataset.json), [data_quality.json](results/data_quality.json), and the historical [reconstruction audit](kraken_reconstruction_fix.md).
 
-The quote instruments are not identical. USD/USDT basis can enter cross-venue differences, and the short capture cannot represent different volatility, liquidity, or market regimes.
+The quote currencies differ, and only 291 of 35,980 primary rows have both venues valid at the 100 ms freshness threshold.
 
-## 1. Does cross-venue state improve prediction?
+## Cross-venue comparison and horizon results
 
-No improvement is supported by the current test. Compared with the 13-feature local Ridge model, the 44-feature local-plus-cross-venue model increased MAE by 837.58 ticks at 10 ms, 837.58 at 50 ms, 1,045.70 at 100 ms, and 835.19 at 250 ms. At 1 second it reduced MAE by 153.15 ticks, but the target standard deviation was still zero. All five horizons are therefore classified as `insufficient_target_variation`, and none supports a cross-venue improvement. See [cross_venue_results.csv](results/cross_venue_results.csv).
+| Horizon | Eligible test rows | Target std. dev. (ticks) | Local MAE | Cross-venue MAE | Local IC | Cross-venue IC |
+|---:|---:|---:|---:|---:|---:|---:|
+| 10 ms | 5,315 | 43.783893 | 9.620556 | 14.481894 | 0.145772 | 0.101371 |
+| 50 ms | 5,319 | 46.510994 | 10.322595 | 15.092695 | 0.151519 | 0.110845 |
+| 100 ms | 5,308 | 65.924925 | 19.454271 | 25.809284 | 0.201919 | 0.171502 |
+| 250 ms | 5,296 | 109.856521 | 43.238553 | 49.700837 | 0.247502 | 0.215845 |
+| 1 s | 5,281 | 262.905028 | 141.223958 | 159.074527 | 0.307063 | 0.272493 |
 
-![Local and cross-venue Ridge MAE across horizons](figures/cross_venue_mae.png)
+MAE and target standard deviation use normalized price ticks. The paired block-bootstrap MAE difference (cross minus local) is positive at all horizons; its reported intervals exclude zero. These results describe this split, not a universal ranking. See [cross_venue_results.csv](results/cross_venue_results.csv).
 
-The chart is descriptive only. It must not be read as an estimate of performance on varying future returns.
+![Held-out Ridge MAE across horizons](figures/cross_venue_mae.png)
 
-## 2. At which horizons is improvement supported?
+## Feature ablation
 
-At none of the evaluated horizons: 10 ms, 50 ms, 100 ms, 250 ms, or 1 second. IC and its bootstrap interval are undefined at every horizon because the held-out target is constant. The paired block-bootstrap MAE interval favors the local model at the first four horizons and the cross-venue model at 1 second, but a constant outcome cannot demonstrate useful return prediction.
+The one-feature top-of-book Ridge set has the lowest test MAE among the nine cumulative sets at each horizon: 4.35, 4.47, 8.84, 21.61, and 89.58 ticks from 10 ms to 1 second. The full cumulative set has 13.53, 14.05, 23.67, 46.40, and 152.82 ticks. Some intermediate additions improve on the immediately preceding set, but none beats top of book. This is a within-capture comparison; feature count and correlated predictors can affect fitted Ridge behavior. See [ablation_results.csv](results/ablation_results.csv).
 
-## 3. Which feature groups help most?
+## Lead-lag
 
-The smallest top-of-book Ridge feature set has the lowest descriptive test MAE at every horizon in the cumulative ablation. Its MAE ranges from 1.29 ticks at 10 and 50 ms to 28.11 ticks at 1 second. No larger cumulative feature set beats it. At 10 ms, the full sequence through lead-lag features reaches 911.90 ticks; at 1 second it reaches 225.12 ticks. See [ablation_results.csv](results/ablation_results.csv).
-
-Some additions improve on the immediately preceding cumulative set—for example multi-level OFI at 100 and 250 ms and pairwise features at 1 second—but those sets still do not outperform top of book. Because test targets are constant, this identifies instability on this split rather than a general feature ranking.
-
-## 4. Does either venue appear to lead?
-
-No consistent leader is visible. Only 27 of 60 tested direction, signal, and lag combinations have defined correlations. The defined values range from -0.0171 to 0.0381. Microprice-change correlations in both venue directions remain close to zero across the tested lags, and most price or flow relationships are undefined because one series lacks variation. See [lead_lag_results.csv](results/lead_lag_results.csv).
+All 60 tested direction, signal, and lag combinations have defined correlations, ranging from -0.00257 to 0.02102. Microprice-change correlations in both venue directions remain close to zero over the tested 10 to 500 ms lags. The table does not show consistent venue leadership. These are temporal associations, not causal estimates. See [lead_lag_results.csv](results/lead_lag_results.csv).
 
 ![Microprice-change lead-lag correlations](figures/lead_lag_microprice.png)
 
-These statistics measure temporal association only; they are not causal estimates.
+## Microprice
 
-## 5. Does microprice outperform midpoint?
+For the future consolidated-midpoint reference, current consolidated microprice has slightly higher MAE than current consolidated midpoint at every horizon: 10.982 versus 10.659 ticks at 10 ms and 139.071 versus 138.905 at 1 second. The reference comparison uses the full capture without fitted parameters, so it is separate from the held-out Ridge comparison. See [microprice_results.csv](results/microprice_results.csv).
 
-Not consistently. For the future consolidated-midpoint target, current consolidated microprice has slightly higher MAE than current consolidated midpoint at every horizon. At 10 ms the values are 150.64 versus 150.19 ticks; at 1 second they are 215.50 versus 215.30 ticks. Venue-level midpoint and microprice results are mixed, with small differences relative to their overall errors. See [microprice_results.csv](results/microprice_results.csv).
+## Staleness
 
-Isolated directional and AUC values are not treated as decisive because class balance and usable-row counts vary across comparisons.
+Two-venue coverage grows from 11 of 35,980 clock rows (0.031%) at 25 ms freshness to 446 rows (1.240%) at 500 ms; at the primary 100 ms threshold it is 291 rows (0.809%). All 25 horizon and freshness evaluations have varied test targets and completed status. The coverage change is measurable, while the scarcity of simultaneously valid venues limits interpretation of cross-venue features. See [staleness_results.csv](results/staleness_results.csv).
 
-## 6. How sensitive are results to venue staleness?
+![Two-venue coverage by freshness threshold](figures/staleness_coverage.png)
 
-Coverage is strongly sensitive. The fraction of rows with both venues valid rises from 1.69% at a 25 ms threshold to 15.21% at 50 ms, 43.10% at 100 ms, 58.31% at 250 ms, and 59.72% at 500 ms. Mean valid venue count rises from 0.24 to 1.59 over the same thresholds. See [staleness_results.csv](results/staleness_results.csv).
+## Latency and computation
 
-![Two-venue coverage across freshness thresholds](figures/staleness_coverage.png)
+All 50 offline horizon and added-decision-delay evaluations, covering 0 to 5 ms, completed with defined IC. The delay study uses an event-sampled dataset and is not directly comparable to the primary 50 ms clock split. Its results describe delayed alignment in this capture, not live execution or an exploitable signal lifetime. See [latency_results.csv](results/latency_results.csv).
 
-Predictive sensitivity is not estimable. The 25 ms variant has only one to four usable test rows, while every test at the looser thresholds has one unique target value. The experiment therefore shows a coverage-versus-freshness tradeoff but not how predictive information changes with staleness.
+The explicitly documented canonical C++ Release benchmark averages 71.16 ns per order-book update and 1,034.57 ns per feature and synchronization event. The corrected run also reports machine-specific Python/scikit-learn single-row inference of roughly 0.79 to 1.10 ms across its evaluated pipelines. The separate benchmark rerun is not promoted because a faster run alone does not change the canonical hardware methodology. See [benchmark_results.json](results/benchmark_results.json) and [latency_power_results.csv](results/latency_power_results.csv).
 
-## 7. How quickly does predictive quality decay with added latency?
+## Regimes
 
-The decay rate cannot be estimated from this capture. All 50 combinations of five horizons and ten added decision delays, from 0 to 5 ms, have zero test-target standard deviation and undefined IC. MAE changes under delayed alignment are recorded, but they do not establish signal decay without outcome variation. See [latency_results.csv](results/latency_results.csv).
+All 55 populated horizon and regime-band evaluations report higher cross-venue MAE. Spread occupies only its low test band, limiting that comparison; the other five regime variables have both bands. Training-partition medians set thresholds. These subgroup results are exploratory and do not establish how the model would behave under other market conditions. See [regime_results.csv](results/regime_results.csv).
 
-Measured computation cost is available. On this machine, the C++ feature-and-cross-venue path averages 1,034.57 ns per event. Median trial-average single-row Python/scikit-learn inference ranges from roughly 0.74 ms for the smallest Ridge pipeline to 1.15 ms for the 44-feature pipeline. Since predictive quality is unassessable, the study cannot conclude that the extra computation is worthwhile. See [benchmark_results.json](results/benchmark_results.json) and [latency_power_results.csv](results/latency_power_results.csv).
+## Limitations and conclusion
 
-## 8. Which feature groups failed to help?
+This is one 30-minute public capture with one chronological split. Binance and Kraken use different quote currencies, synchronized two-venue coverage is sparse at tight freshness thresholds, and live observations cannot be exactly reproduced. Computation benchmarks omit exchange and network latency. The study does not evaluate execution, profitability, or causality.
 
-On the current held-out split, adding depth, imbalance, OFI, multi-level OFI, trade flow, cross-venue basis, pairwise features, and lead-lag features did not beat top-of-book MAE at any horizon. The local-plus-cross-venue baseline also failed to beat the local baseline at four of five horizons. These are meaningful negative observations for this run, but zero target variance prevents interpreting them as evidence that the groups are intrinsically useless.
-
-The dedicated record of negative and inconclusive outcomes is [negative_results.md](negative_results.md).
-
-## 9. Does nonlinear modeling materially improve results?
-
-This question was intentionally left unanswered. The optional nonlinear baseline was skipped because constant held-out targets would make a comparison with Ridge uninformative. Adding model complexity cannot repair insufficient evaluation data.
-
-## 10. Important limitations
-
-- The capture lasts approximately 27.7 seconds and contains only 600 source events.
-- Binance `BTCUSDT` and Kraken `BTC/USD` have different quote currencies.
-- Venue activity is highly asymmetric, especially for trades: 121 Binance trades versus 2 Kraken trades.
-- Only 153 of 355 rows have both venues valid at the primary 100 ms freshness threshold.
-- The purged test targets are constant at all forecast horizons.
-- Regime tests are likewise underpowered; all 45 populated evaluations have zero target variance, and three regime variables occupy only one out-of-sample band.
-- Public live capture is procedurally reproducible but cannot reproduce identical market observations.
-- Benchmarks are machine-specific and do not represent exchange, network, or colocation latency.
-- Predictive association, not causality or trading profitability, is evaluated.
-
-## Conclusion
-
-The current run validates the data path, synchronization discipline, leakage checks, experiment interfaces, and result reporting. It does not validate a cross-venue predictive signal. A materially longer synchronized capture with varied chronological test targets is required before model, horizon, feature, staleness, latency, or regime comparisons can support a market-microstructure conclusion. The audit rules and fixed experiment definitions in [methodology.md](methodology.md) provide the basis for that follow-up.
+The corrected experiment resolves the earlier constant-target and Kraken-reconstruction defects. It provides a meaningful negative result for the current local-plus-cross-venue feature set on this split, while leaving broader cross-venue usefulness open. See [methodology.md](methodology.md) for the fixed design and [negative_results.md](negative_results.md) for the bounded negative findings.

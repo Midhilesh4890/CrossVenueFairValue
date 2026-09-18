@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-09-10T16:16:51.524387Z",
+  "generated_at_utc": "2026-09-14T17:14:49.520435Z",
   "venue_set": [
     "binance",
     "kraken"
@@ -10,10 +10,10 @@
     "kraken": "BTC/USD"
   },
   "time_period": {
-    "start_timestamp_ns": 1788984392022950900,
-    "end_timestamp_ns": 1788984419759856300,
-    "start_utc": "2026-09-09T20:06:32.022950900Z",
-    "end_utc": "2026-09-09T20:06:59.759856300Z"
+    "start_timestamp_ns": 1789388508319243800,
+    "end_timestamp_ns": 1789390314775021700,
+    "start_utc": "2026-09-14T12:21:48.319243800Z",
+    "end_utc": "2026-09-14T12:51:54.775021700Z"
   },
   "sources": {
     "binance": {
@@ -25,21 +25,21 @@
     }
   },
   "source_event_counts": {
-    "binance": 300,
-    "kraken": 300
+    "binance": 97214,
+    "kraken": 114327
   },
   "source_software_revisions": {
-    "binance": "f8a75e55664fa13ccbf955a34fcc49859f74fbe4",
-    "kraken": "f8a75e55664fa13ccbf955a34fcc49859f74fbe4"
+    "binance": "624423d76bfa2dd94057a92b8331fb57d6a05b72",
+    "kraken": "624423d76bfa2dd94057a92b8331fb57d6a05b72"
   },
-  "normalized_file": "data/generated/20260909T200632.022951Z/normalized.csv",
+  "normalized_file": "data/generated/fixed_capture/normalized.csv",
   "sampling": "clock",
   "sampling_interval_ns": 50000000,
   "max_target_delay_ns": 100000000,
   "variants": [
     {
-      "dataset_file": "data/generated/20260909T200632.022951Z/dataset_staleness_25000000.csv",
-      "rows": 355,
+      "dataset_file": "data/generated/fixed_capture/dataset_staleness_25000000.csv",
+      "rows": 35980,
       "staleness_ns": 25000000,
       "prediction_horizons_ns": [
         10000000,
@@ -49,27 +49,27 @@
         1000000000
       ],
       "missing_target_counts": {
-        "10000000": 218,
-        "50000000": 173,
-        "100000000": 173,
-        "250000000": 173,
-        "1000000000": 179
+        "10000000": 10602,
+        "50000000": 9465,
+        "100000000": 9465,
+        "250000000": 9467,
+        "1000000000": 9471
       },
       "valid_venue_counts": {
         "minimum": 0,
         "maximum": 2,
-        "mean": 0.23661971830985915,
+        "mean": 0.38032240133407447,
         "distribution": {
-          "0": 277,
-          "1": 72,
-          "2": 6
+          "0": 22307,
+          "1": 13662,
+          "2": 11
         }
       },
       "leakage_validation": "passed"
     },
     {
-      "dataset_file": "data/generated/20260909T200632.022951Z/dataset_staleness_50000000.csv",
-      "rows": 355,
+      "dataset_file": "data/generated/fixed_capture/dataset_staleness_50000000.csv",
+      "rows": 35980,
       "staleness_ns": 50000000,
       "prediction_horizons_ns": [
         10000000,
@@ -79,27 +79,27 @@
         1000000000
       ],
       "missing_target_counts": {
-        "10000000": 2,
-        "50000000": 2,
-        "100000000": 3,
-        "250000000": 6,
-        "1000000000": 21
+        "10000000": 929,
+        "50000000": 668,
+        "100000000": 669,
+        "250000000": 672,
+        "1000000000": 687
       },
       "valid_venue_counts": {
         "minimum": 0,
         "maximum": 2,
-        "mean": 0.8225352112676056,
+        "mean": 0.5621734296831573,
         "distribution": {
-          "0": 117,
-          "1": 184,
-          "2": 54
+          "0": 15879,
+          "1": 19975,
+          "2": 126
         }
       },
       "leakage_validation": "passed"
     },
     {
-      "dataset_file": "data/generated/20260909T200632.022951Z/dataset_staleness_100000000.csv",
-      "rows": 355,
+      "dataset_file": "data/generated/fixed_capture/dataset_staleness_100000000.csv",
+      "rows": 35980,
       "staleness_ns": 100000000,
       "prediction_horizons_ns": [
         10000000,
@@ -109,27 +109,27 @@
         1000000000
       ],
       "missing_target_counts": {
-        "10000000": 1,
-        "50000000": 1,
-        "100000000": 2,
-        "250000000": 5,
-        "1000000000": 20
+        "10000000": 667,
+        "50000000": 493,
+        "100000000": 494,
+        "250000000": 497,
+        "1000000000": 512
       },
       "valid_venue_counts": {
         "minimum": 0,
         "maximum": 2,
-        "mean": 1.4281690140845071,
+        "mean": 0.9823235130628126,
         "distribution": {
-          "0": 1,
-          "1": 201,
-          "2": 153
+          "0": 927,
+          "1": 34762,
+          "2": 291
         }
       },
       "leakage_validation": "passed"
     },
     {
-      "dataset_file": "data/generated/20260909T200632.022951Z/dataset_staleness_250000000.csv",
-      "rows": 355,
+      "dataset_file": "data/generated/fixed_capture/dataset_staleness_250000000.csv",
+      "rows": 35980,
       "staleness_ns": 250000000,
       "prediction_horizons_ns": [
         10000000,
@@ -139,27 +139,27 @@
         1000000000
       ],
       "missing_target_counts": {
-        "10000000": 1,
-        "50000000": 1,
-        "100000000": 2,
-        "250000000": 5,
-        "1000000000": 20
+        "10000000": 271,
+        "50000000": 228,
+        "100000000": 229,
+        "250000000": 232,
+        "1000000000": 247
       },
       "valid_venue_counts": {
         "minimum": 0,
         "maximum": 2,
-        "mean": 1.580281690140845,
+        "mean": 1.0005836575875486,
         "distribution": {
-          "0": 1,
-          "1": 147,
-          "2": 207
+          "0": 369,
+          "1": 35221,
+          "2": 390
         }
       },
       "leakage_validation": "passed"
     },
     {
-      "dataset_file": "data/generated/20260909T200632.022951Z/dataset_staleness_500000000.csv",
-      "rows": 355,
+      "dataset_file": "data/generated/fixed_capture/dataset_staleness_500000000.csv",
+      "rows": 35980,
       "staleness_ns": 500000000,
       "prediction_horizons_ns": [
         10000000,
@@ -169,20 +169,20 @@
         1000000000
       ],
       "missing_target_counts": {
-        "10000000": 1,
-        "50000000": 1,
-        "100000000": 2,
-        "250000000": 5,
-        "1000000000": 20
+        "10000000": 138,
+        "50000000": 123,
+        "100000000": 124,
+        "250000000": 127,
+        "1000000000": 142
       },
       "valid_venue_counts": {
         "minimum": 0,
         "maximum": 2,
-        "mean": 1.5943661971830987,
+        "mean": 1.0081156197887715,
         "distribution": {
-          "0": 1,
-          "1": 142,
-          "2": 212
+          "0": 154,
+          "1": 35380,
+          "2": 446
         }
       },
       "leakage_validation": "passed"

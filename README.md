@@ -4,19 +4,13 @@
 
 FairValueLab is a C++20 and Python 3.12 market-microstructure research system for capturing public multi-venue L2 data, replaying it in local receipt-time order, building leakage-safe synchronized datasets, and testing short-horizon fair-value relationships.
 
-The committed empirical study analyzes Binance `BTCUSDT` and Kraken `BTC/USD`: 600 public source messages expanding to 14,487 normalized book and trade events over approximately 27.7 seconds on 2026-09-09. It evaluates 10 ms, 50 ms, 100 ms, 250 ms, and 1 second forecast horizons. The different USD and USDT quote currencies are an explicit limitation.
+The canonical empirical study uses a retained 30-minute public capture of Binance `BTCUSDT` and Kraken `BTC/USD` on 2026-09-14. It contains 211,541 source messages (97,214 Binance; 114,327 Kraken) and 940,999 normalized events. Kraken reconstruction reports zero crossed books, zero valid source messages rejected, 110,910 checksum matches, and zero mismatches. The tested forecast horizons are 10, 50, 100, and 250 ms and 1 second.
 
-## Key findings
+## Key finding
 
-- The current capture does not establish that cross-venue features improve prediction. All purged chronological test horizons have zero target variance, so IC is undefined and no predictive improvement is supported.
-- The local-plus-cross-venue Ridge model has worse descriptive MAE than the local model at 10, 50, 100, and 250 ms. It has lower MAE at 1 second, but the constant test target prevents treating that result as evidence of predictive value.
-- The top-of-book Ridge feature set has the lowest descriptive test MAE at all five horizons. Larger cumulative feature groups do not beat it on this split.
-- Defined lead-lag correlations range from -0.0171 to 0.0381; no consistent venue leader is visible.
-- Microprice does not consistently outperform midpoint across references and horizons.
-- Two-venue coverage rises from 1.69% with a 25 ms freshness threshold to 59.72% with 500 ms, demonstrating a measurable coverage-versus-freshness tradeoff.
-- Offline signal decay, regime dependence, and whether additional computation is worthwhile remain unassessable because the held-out outcomes lack variation.
+The corrected chronological test has meaningful target variation, yet the 44-feature local-plus-cross-venue Ridge model has higher MAE and lower information coefficient (IC) than the 13-feature local model at all five horizons. This capture and feature design do not establish incremental predictive value from the current cross-venue features. Binance and Kraken use different quote currencies; two-venue coverage is sparse at tight freshness thresholds. The C++ Release benchmark averages 71.16 ns per order-book update and 1,034.57 ns per feature and synchronization event on the documented test machine.
 
-These are deliberately limited conclusions from a short capture, not universal claims about cross-venue information. See the complete [findings](research/findings.md), [negative results](research/negative_results.md), and [methodology](research/methodology.md).
+See the [findings](research/findings.md), [negative results](research/negative_results.md), and [methodology](research/methodology.md).
 
 ![Local and cross-venue Ridge MAE across horizons](research/figures/cross_venue_mae.png)
 
@@ -67,15 +61,15 @@ The source assessment, exact normalization rules, feature definitions, target al
 
 The main Ridge comparison uses 13 local features and 44 local-plus-cross-venue features:
 
-| Horizon | Local MAE | Cross-venue MAE | Cross minus local | Test target std. dev. | Conclusion |
-|---:|---:|---:|---:|---:|---|
-| 10 ms | 123.27 | 960.85 | +837.58 | 0.00 | Insufficient variation |
-| 50 ms | 123.27 | 960.85 | +837.58 | 0.00 | Insufficient variation |
-| 100 ms | 147.67 | 1,193.37 | +1,045.70 | 0.00 | Insufficient variation |
-| 250 ms | 248.88 | 1,084.07 | +835.19 | 0.00 | Insufficient variation |
-| 1 s | 382.80 | 229.65 | -153.15 | 0.00 | Insufficient variation |
+| Horizon | Local MAE | Cross-venue MAE | Local IC | Cross-venue IC | Test target std. dev. |
+|---:|---:|---:|---:|---:|---:|
+| 10 ms | 9.620556 | 14.481894 | 0.145772 | 0.101371 | 43.783893 |
+| 50 ms | 10.322595 | 15.092695 | 0.151519 | 0.110845 | 46.510994 |
+| 100 ms | 19.454271 | 25.809284 | 0.201919 | 0.171502 | 65.924925 |
+| 250 ms | 43.238553 | 49.700837 | 0.247502 | 0.215845 | 109.856521 |
+| 1 s | 141.223958 | 159.074527 | 0.307063 | 0.272493 | 262.905028 |
 
-MAE is in normalized price ticks. Positive delta means the cross-venue model is worse. The committed [cross-venue results](research/results/cross_venue_results.csv) include paired time-block bootstrap intervals and directional fields.
+MAE is in normalized price ticks. The committed [cross-venue results](research/results/cross_venue_results.csv) include paired time-block bootstrap intervals and directional fields.
 
 ![Cross-venue coverage versus freshness threshold](research/figures/staleness_coverage.png)
 
@@ -149,13 +143,9 @@ Large raw captures and generated datasets are intentionally excluded from Git. T
 
 ## Limitations
 
-- The committed empirical sample is only 27.7 seconds long.
-- The venues expose related but non-identical quote instruments.
-- Venue message and trade activity are strongly asymmetric.
-- The purged held-out target is constant at every forecast horizon.
-- Tight freshness settings leave too few synchronized test observations.
+- The study contains one approximately 30-minute capture and one chronological split; it does not establish behavior across other days or market conditions.
+- Binance `BTCUSDT` and Kraken `BTC/USD` have different quote currencies.
+- At the primary 100 ms freshness threshold, only 291 of 35,980 clock rows have both venues valid.
 - Live public capture reproduces a procedure, not identical historical events.
-- Reported computation benchmarks are specific to one machine and software build.
-- The study measures association and prediction, not causality or execution outcomes.
-
-Until a materially longer synchronized capture produces varied held-out targets, model and feature comparisons should be treated as pipeline diagnostics rather than evidence of a market signal.
+- Benchmarks are machine-specific and exclude exchange and network latency.
+- The study measures prediction and association, not causality or execution outcomes.

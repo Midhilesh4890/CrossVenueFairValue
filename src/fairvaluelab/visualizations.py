@@ -38,7 +38,7 @@ def plot_cross_venue_mae(results: pd.DataFrame, output: Path) -> None:
     axis.text(
         0.01,
         0.98,
-        "Descriptive only: held-out target variance is zero",
+        "Corrected 30-minute capture; chronological held-out test",
         transform=axis.transAxes,
         va="top",
         fontsize=9,
