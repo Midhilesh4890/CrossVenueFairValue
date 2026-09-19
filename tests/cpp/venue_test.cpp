@@ -1,5 +1,4 @@
 #include "fairvaluelab/venue.hpp"
-#include "fairvaluelab/venue_adapter.hpp"
 #include "fairvaluelab/venue_adapters.hpp"
 
 #include <cstddef>
@@ -8,7 +7,6 @@
 #include <iostream>
 #include <limits>
 #include <string>
-#include <type_traits>
 #include <vector>
 
 using fairvaluelab::BookUpdate;
@@ -18,10 +16,7 @@ using fairvaluelab::price_to_ticks;
 using fairvaluelab::Quantity;
 using fairvaluelab::Rational;
 using fairvaluelab::scale_quantity;
-using fairvaluelab::VenueAdapter;
 using fairvaluelab::VenueConfig;
-
-static_assert(std::is_abstract_v<VenueAdapter>);
 
 #define FVL_CHECK(condition)                                                                       \
     do {                                                                                           \

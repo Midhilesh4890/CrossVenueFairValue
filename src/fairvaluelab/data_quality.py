@@ -321,41 +321,10 @@ def _exchange_timestamp_ns(record: RawRecord) -> int | None:
     return None
 
 
-def _iso_timestamp_ns(value: str) -> int:
-    timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if timestamp.tzinfo is None:
-        raise ValueError("timestamp lacks timezone")
-    return int(timestamp.timestamp() * 1_000_000_000)
-
-
-def _exchange_timestamp_ns(record: RawRecord) -> int | None:
-    if record.record_kind not in {"depth_diff", "trade"}:
-        return None
-    if not isinstance(record.payload, dict):
-        return None
-    payload = record.payload
-    if record.venue == "binance":
-        data = payload.get("data", payload)
-        if not isinstance(data, dict):
-            return None
-        value = data.get("T" if record.record_kind == "trade" else "E")
-        return _integer(value) * 1_000_000
-    if record.venue == "coinbase":
-        value = payload.get("time")
-        return _iso_timestamp_ns(value) if isinstance(value, str) else None
-    if record.venue == "kraken":
-        data = payload.get("data")
-        if not isinstance(data, list) or not data or not isinstance(data[-1], dict):
-            return None
-        value = data[-1].get("timestamp")
-        return _iso_timestamp_ns(value) if isinstance(value, str) else None
-    return None
-
-
 def _summary(values: list[int] | list[Decimal]) -> dict[str, int | float | None]:
     if not values:
         return {"count": 0, "min": None, "median": None, "p95": None, "p99": None, "max": None}
-    ordered = sorted(values)
+    ordered: list[int | Decimal] = sorted(values)
 
     def percentile(probability: float) -> int | float:
         index = max(0, math.ceil(probability * len(ordered)) - 1)

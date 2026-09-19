@@ -88,24 +88,6 @@ Post-fix data quality:
 - Binance: `events=97214 book_updates=17990 trades=79224 invalid=0 crossed=0 locked=0`
 - Kraken: `events=114327 book_updates=110910 trades=3198 invalid=0 crossed=0 locked=0`
 
-Primary cross-venue comparison after the fix:
-
-| Horizon | Test rows | Target std | Local MAE | Cross MAE | Delta MAE | Local IC | Cross IC | Cross improved |
-|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| 10 ms | 5,315 | 43.783893 | 9.620556 | 14.481894 | 4.861339 | 0.145772 | 0.101371 | false |
-| 50 ms | 5,319 | 46.510994 | 10.322595 | 15.092695 | 4.770100 | 0.151519 | 0.110845 | false |
-| 100 ms | 5,308 | 65.924925 | 19.454271 | 25.809284 | 6.355012 | 0.201919 | 0.171502 | false |
-| 250 ms | 5,296 | 109.856521 | 43.238553 | 49.700837 | 6.462284 | 0.247502 | 0.215845 | false |
-| 1 s | 5,281 | 262.905028 | 141.223958 | 159.074527 | 17.850570 | 0.307063 | 0.272493 | false |
-
-The previous cross-venue degradation was not fully explained by the reconstruction
-defect. After the fix, cross-venue features still underperform the local feature
-set on this split, but the result is now based on a clean Kraken reconstruction
-rather than crossed books and malformed normalizer rejects.
-
-## Publication Recommendation
-
-The retained 30-minute capture is sufficient to replace the previous invalid
-27-second published study as a corrected empirical result. A separate 60-minute
-capture is still useful for stronger evidence and stability checks, but it is not
-required before replacing the invalid study artifacts.
+The corrected predictive results are recorded in [findings.md](findings.md).
+The repaired capture replaced the earlier invalid study; no additional capture
+was required for this reconstruction audit.

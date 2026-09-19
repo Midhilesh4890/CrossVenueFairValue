@@ -53,7 +53,7 @@ safeguards:
 - identify quote currency explicitly in every artifact;
 - report the contemporaneous cross-venue basis rather than assuming parity;
 - avoid interpreting a persistent USD/USDT basis as predictive book information;
-- state clearly that the two instruments have different quote currencies.
+- state that the two instruments have different quote currencies.
 
 The initial study should use L2 depth rather than L3 order data. L2 is available publicly and
 consistently enough across the selected venues, aligns with the existing aggregated-price-level

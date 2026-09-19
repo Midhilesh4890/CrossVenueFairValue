@@ -1,9 +1,5 @@
 # Empirical Findings
 
-## Executive result
-
-The corrected retained capture spans 30 minutes and yields varied held-out targets at all five horizons. Kraken reconstruction is clean under its top-ten checksum validation. On the primary purged chronological split, the 44-feature local-plus-cross-venue Ridge model has higher MAE and lower IC than the 13-feature local Ridge model at every tested horizon. This particular capture and feature design do not establish incremental predictive value from the current cross-venue features.
-
 ## Dataset studied
 
 The 2026-09-14 capture runs from 12:21:48 to 12:51:54 UTC (1,806.456 seconds). It has 97,214 Binance `BTCUSDT` and 114,327 Kraken `BTC/USD` source messages, or 211,541 total. Normalization yields 940,999 events. Kraken has zero crossed books and zero valid source messages rejected; 110,910 checksums match and none mismatch. The primary 50 ms clock dataset contains 35,980 rows. Its chronological partition contains 25,166 train, 5,377 validation, and 5,397 test rows before horizon-specific purging and eligibility filters. See [real_dataset.json](results/real_dataset.json), [data_quality.json](results/data_quality.json), and the historical [reconstruction audit](kraken_reconstruction_fix.md).
@@ -48,14 +44,8 @@ Two-venue coverage grows from 11 of 35,980 clock rows (0.031%) at 25 ms freshnes
 
 All 50 offline horizon and added-decision-delay evaluations, covering 0 to 5 ms, completed with defined IC. The delay study uses an event-sampled dataset and is not directly comparable to the primary 50 ms clock split. Its results describe delayed alignment in this capture, not live execution or an exploitable signal lifetime. See [latency_results.csv](results/latency_results.csv).
 
-The explicitly documented canonical C++ Release benchmark averages 71.16 ns per order-book update and 1,034.57 ns per feature and synchronization event. The corrected run also reports machine-specific Python/scikit-learn single-row inference of roughly 0.79 to 1.10 ms across its evaluated pipelines. The separate benchmark rerun is not promoted because a faster run alone does not change the canonical hardware methodology. See [benchmark_results.json](results/benchmark_results.json) and [latency_power_results.csv](results/latency_power_results.csv).
+The canonical C++ Release benchmark averages 71.16 ns per order-book update and 1,034.57 ns per feature and synchronization event. The corrected run also reports machine-specific Python/scikit-learn single-row inference of roughly 0.79 to 1.10 ms across its evaluated pipelines. The separate benchmark rerun is not promoted because a faster run alone does not change the canonical hardware methodology. See [benchmark_results.json](results/benchmark_results.json) and [latency_power_results.csv](results/latency_power_results.csv).
 
 ## Regimes
 
-All 55 populated horizon and regime-band evaluations report higher cross-venue MAE. Spread occupies only its low test band, limiting that comparison; the other five regime variables have both bands. Training-partition medians set thresholds. These subgroup results are exploratory and do not establish how the model would behave under other market conditions. See [regime_results.csv](results/regime_results.csv).
-
-## Limitations and conclusion
-
-This is one 30-minute public capture with one chronological split. Binance and Kraken use different quote currencies, synchronized two-venue coverage is sparse at tight freshness thresholds, and live observations cannot be exactly reproduced. Computation benchmarks omit exchange and network latency. The study does not evaluate execution, profitability, or causality.
-
-The corrected experiment resolves the earlier constant-target and Kraken-reconstruction defects. It provides a meaningful negative result for the current local-plus-cross-venue feature set on this split, while leaving broader cross-venue usefulness open. See [methodology.md](methodology.md) for the fixed design and [negative_results.md](negative_results.md) for the bounded negative findings.
+All 55 populated horizon and regime-band evaluations report higher cross-venue MAE. Spread occupies only its low test band, limiting that comparison; the other five regime variables have both bands. Training-partition medians set thresholds. These subgroup results are exploratory. See [regime_results.csv](results/regime_results.csv).

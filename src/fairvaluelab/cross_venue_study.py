@@ -31,8 +31,10 @@ def block_bootstrap_deltas(
     row_count = actual.size
     if row_count < 2:
         return np.array([], dtype=float), np.array([], dtype=float)
-    starts = np.arange(0, row_count, block_rows)
-    blocks = [np.arange(start, min(start + block_rows, row_count)) for start in starts]
+    blocks = [
+        np.arange(start, min(start + block_rows, row_count))
+        for start in range(0, row_count, block_rows)
+    ]
     generator = np.random.default_rng(seed)
     mae_deltas = np.empty(replicates)
     ic_deltas = np.full(replicates, np.nan)

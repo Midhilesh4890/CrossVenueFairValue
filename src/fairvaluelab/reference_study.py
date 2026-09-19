@@ -6,40 +6,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import accuracy_score, recall_score, roc_auc_score
 
+from fairvaluelab.baseline import _direction_metrics, _information_coefficient
 from fairvaluelab.dataset import load_dataset, target_horizons
 
 _VENUE_COLUMN = re.compile(r"^venue_(\d+)_")
-
-
-def _information_coefficient(actual: np.ndarray, predicted: np.ndarray) -> float:
-    if actual.size < 2 or np.std(actual) == 0.0 or np.std(predicted) == 0.0:
-        return float("nan")
-    return float(np.corrcoef(actual, predicted)[0, 1])
-
-
-def _direction_metrics(actual: np.ndarray, predicted: np.ndarray) -> tuple[float, float, float]:
-    actual_direction = np.sign(actual)
-    predicted_direction = np.sign(predicted)
-    accuracy = float(accuracy_score(actual_direction, predicted_direction))
-    balanced = float("nan")
-    if np.unique(actual_direction).size >= 2:
-        balanced = float(
-            recall_score(
-                actual_direction,
-                predicted_direction,
-                labels=np.unique(actual_direction),
-                average="macro",
-                zero_division=0,
-            )
-        )
-    nonzero = actual_direction != 0
-    nonzero_actual = actual_direction[nonzero]
-    auc = float("nan")
-    if np.unique(nonzero_actual).size == 2:
-        auc = float(roc_auc_score(nonzero_actual > 0, predicted[nonzero]))
-    return accuracy, balanced, auc
 
 
 def reference_series(dataset: pd.DataFrame) -> dict[str, pd.Series]:

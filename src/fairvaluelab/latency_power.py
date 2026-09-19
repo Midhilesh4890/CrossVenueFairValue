@@ -8,6 +8,7 @@ from statistics import median
 
 import pandas as pd
 from sklearn.linear_model import Ridge
+from sklearn.pipeline import Pipeline
 
 from fairvaluelab.baseline import (
     _pipeline,
@@ -29,7 +30,7 @@ def feature_path_latency(benchmark_report: dict[str, object]) -> float:
 
 
 def measure_prediction_latency(
-    model: object, sample: pd.DataFrame, repetitions: int, trials: int
+    model: Pipeline, sample: pd.DataFrame, repetitions: int, trials: int
 ) -> float:
     if repetitions <= 0 or trials <= 0:
         raise ValueError("repetitions and trials must be positive")

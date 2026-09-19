@@ -31,10 +31,6 @@ void fairvaluelab::ResearchSampler::process(const Trade& trade,
     consume_emitted_features(output);
 }
 
-fairvaluelab::SampleKind fairvaluelab::ResearchSampler::sample_kind() const noexcept {
-    return config_.sample_kind;
-}
-
 void fairvaluelab::ResearchSampler::consume_emitted_features(
     std::vector<CrossVenueSample>& output) {
     std::optional<TimestampNs> pending_clock_timestamp;

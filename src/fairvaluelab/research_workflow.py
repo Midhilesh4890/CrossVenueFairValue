@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from fairvaluelab.research_dataset import resolve_executable
+from fairvaluelab.cli import resolve_executable
 
 HORIZONS = "10000000,50000000,100000000,250000000,1000000000"
 STALENESS_THRESHOLDS = (25_000_000, 50_000_000, 100_000_000, 250_000_000, 500_000_000)

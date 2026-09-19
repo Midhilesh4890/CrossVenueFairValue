@@ -4,18 +4,12 @@ import argparse
 import re
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from sklearn.linear_model import Ridge
-from sklearn.metrics import (
-    accuracy_score,
-    mean_absolute_error,
-    r2_score,
-    recall_score,
-    roc_auc_score,
-)
+from sklearn.metrics import mean_absolute_error, r2_score
 
 from fairvaluelab.baseline import (
+    _direction_metrics,
     _information_coefficient,
     _pipeline,
     _usable_features,
@@ -98,28 +92,6 @@ def ablation_feature_groups(dataset: pd.DataFrame, primary_venue_id: int) -> dic
         cumulative = list(dict.fromkeys([*cumulative, *columns]))
         groups[name] = cumulative
     return groups
-
-
-def _direction_metrics(actual: np.ndarray, predicted: np.ndarray) -> tuple[float, float, float]:
-    actual_direction = np.sign(actual)
-    predicted_direction = np.sign(predicted)
-    accuracy = float(accuracy_score(actual_direction, predicted_direction))
-    balanced = float("nan")
-    if np.unique(actual_direction).size >= 2:
-        balanced = float(
-            recall_score(
-                actual_direction,
-                predicted_direction,
-                labels=np.unique(actual_direction),
-                average="macro",
-                zero_division=0,
-            )
-        )
-    nonzero = actual_direction != 0
-    auc = float("nan")
-    if np.unique(actual_direction[nonzero]).size == 2:
-        auc = float(roc_auc_score(actual_direction[nonzero] > 0, predicted[nonzero]))
-    return accuracy, balanced, auc
 
 
 def evaluate_ablation(dataset: pd.DataFrame, primary_venue_id: int) -> pd.DataFrame:

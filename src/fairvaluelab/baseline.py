@@ -197,6 +197,28 @@ def _information_coefficient(actual: np.ndarray, predicted: np.ndarray) -> float
     return float(np.corrcoef(actual, predicted)[0, 1])
 
 
+def _direction_metrics(actual: np.ndarray, predicted: np.ndarray) -> tuple[float, float, float]:
+    actual_direction = np.sign(actual)
+    predicted_direction = np.sign(predicted)
+    accuracy = float(accuracy_score(actual_direction, predicted_direction))
+    balanced = float("nan")
+    if np.unique(actual_direction).size >= 2:
+        balanced = float(
+            recall_score(
+                actual_direction,
+                predicted_direction,
+                labels=np.unique(actual_direction),
+                average="macro",
+                zero_division=0,
+            )
+        )
+    nonzero = actual_direction != 0
+    auc = float("nan")
+    if np.unique(actual_direction[nonzero]).size == 2:
+        auc = float(roc_auc_score(actual_direction[nonzero] > 0, predicted[nonzero]))
+    return accuracy, balanced, auc
+
+
 def evaluate_horizon(
     train: pd.DataFrame,
     test: pd.DataFrame,

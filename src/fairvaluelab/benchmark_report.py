@@ -10,12 +10,7 @@ from pathlib import Path
 from statistics import mean, median
 from typing import Any
 
-
-def resolve_executable(build_directory: Path, name: str) -> Path:
-    for candidate in (build_directory / name, build_directory / f"{name}.exe"):
-        if candidate.is_file():
-            return candidate
-    raise FileNotFoundError(f"missing {name} executable in {build_directory}")
+from fairvaluelab.cli import resolve_executable
 
 
 def parse_output(output: str) -> dict[str, float | int]:
@@ -47,7 +42,7 @@ def compiler_metadata(build_directory: Path) -> tuple[str, str, str]:
 
 
 def run_benchmark(executable: Path, event_count: int, repetitions: int) -> list[dict[str, Any]]:
-    command = [executable, "--events", str(event_count)]
+    command = [str(executable), "--events", str(event_count)]
     subprocess.run(command, check=True, capture_output=True, text=True)
     measurements = []
     for _ in range(repetitions):

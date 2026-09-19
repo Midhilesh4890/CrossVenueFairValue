@@ -9,9 +9,10 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.figure import Figure
 
 
-def _finish(figure: plt.Figure, output: Path) -> None:
+def _finish(figure: Figure, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     figure.tight_layout()
     figure.savefig(output, dpi=160, bbox_inches="tight")

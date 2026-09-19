@@ -32,7 +32,6 @@ class BookSide {
     [[nodiscard]] std::span<const PriceLevel> levels() const noexcept;
     [[nodiscard]] std::size_t size() const noexcept;
     [[nodiscard]] std::size_t capacity() const noexcept;
-    [[nodiscard]] Side side() const noexcept;
 
   private:
     [[nodiscard]] bool is_better(PriceTicks lhs, PriceTicks rhs) const noexcept;

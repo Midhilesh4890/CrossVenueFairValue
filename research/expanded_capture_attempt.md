@@ -25,7 +25,7 @@ Start: `2026-09-14T12:21:48.319243800Z`. Provenance end: `2026-09-14T12:51:54.77
 | Binance | BTCUSDT | 97,214 | 17,990 | 79,224 | 79,224 | 0 | 1,799.015648 |
 | Kraken | BTC/USD | 114,327 | 110,910 | 1,617 | 3,198 | 1,800 | 1,798.354511 |
 
-Total: **211,541 source records**, 98,042,013 raw bytes. Both venues supplied substantial book data, although trade activity was strongly asymmetric. USD and USDT are different quote currencies.
+Total: **211,541 source records**, 98,042,013 raw bytes. Both venues supplied substantial book data, although trade counts differed by venue. USD and USDT are different quote currencies.
 
 Raw SHA-256:
 
@@ -130,7 +130,7 @@ Coverage is not materially improved: old two-venue percentages at 25/50/100/250/
 
 ## Local versus cross-venue models — diagnostic only
 
-Fixed Ridge alpha 1; 13 local features versus 44 local-plus-cross-venue features. The established workflow fits on purged train plus validation, without selecting models on test outcomes. Delta means cross-venue minus local: positive MAE delta and negative IC delta favor local. Candidate local Ridge is better on both metrics at every horizon; this does not establish a market result given the failed quality gate.
+Fixed Ridge alpha 1; 13 local features versus 44 local-plus-cross-venue features. The established workflow fits on purged train plus validation, without selecting models on test outcomes. Delta means cross-venue minus local: positive MAE delta and negative IC delta favor local. Candidate local Ridge is better on both metrics at every horizon; the failed quality gate prevents interpreting this as a market result.
 
 | Horizon | local_mae | local_r2 | local_ic | cross_venue_mae | cross_r2 | cross_venue_ic | delta_mae | delta_ic |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |

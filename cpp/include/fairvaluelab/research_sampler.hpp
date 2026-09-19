@@ -66,7 +66,6 @@ class ResearchSampler {
     [[nodiscard]] ApplyResult process(const BookUpdate& update,
                                       std::vector<CrossVenueSample>& output);
     void process(const Trade& trade, std::vector<CrossVenueSample>& output);
-    [[nodiscard]] SampleKind sample_kind() const noexcept;
 
   private:
     void consume_emitted_features(std::vector<CrossVenueSample>& output);

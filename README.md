@@ -8,11 +8,11 @@ The canonical empirical study uses a retained 30-minute public capture of Binanc
 
 ## Key finding
 
-The corrected chronological test has meaningful target variation, yet the 44-feature local-plus-cross-venue Ridge model has higher MAE and lower information coefficient (IC) than the 13-feature local model at all five horizons. This capture and feature design do not establish incremental predictive value from the current cross-venue features. Binance and Kraken use different quote currencies; two-venue coverage is sparse at tight freshness thresholds. The C++ Release benchmark averages 71.16 ns per order-book update and 1,034.57 ns per feature and synchronization event on the documented test machine.
-
-See the [findings](research/findings.md), [negative results](research/negative_results.md), and [methodology](research/methodology.md).
-
-![Local and cross-venue Ridge MAE across horizons](research/figures/cross_venue_mae.png)
+Cross-venue Ridge MAE was higher and IC lower than local Ridge at all five horizons.
+At 10 ms, MAE was 14.481894 versus 9.620556 ticks; at 1 second, 159.074527 versus
+141.223958 ticks. These results apply to one capture and one chronological split.
+See [findings](research/findings.md) for the full tables and
+[negative results](research/negative_results.md) for failed and inconclusive experiments.
 
 ## Architecture
 
@@ -29,49 +29,18 @@ public venue feeds
     -> result tables and figures
 ```
 
-The core provides:
+Code follows that pipeline:
 
-- fixed-capacity L2 books with explicit accepted, duplicate, stale, gap, and invalid-update handling;
-- public Binance and Kraken capture with duration and event bounds, local receipt timestamps, raw payload preservation, and JSON provenance;
-- venue-aware normalization into integer ticks and scaled integer quantities;
-- deterministic multi-venue replay ordered by local receipt time;
-- event and clock sampling with spread, depth, microprice, L1/L3/L5 imbalance, OFI, multi-level OFI, trade flow, freshness, basis, pairwise, and lead-lag fields;
-- consolidated midpoint and microprice references built only from valid fresh venues;
-- configurable multi-horizon targets and validation in both C++ and Python;
-- fixed Ridge and logistic baselines, cross-venue comparison, block-bootstrap uncertainty, reference comparison, ablation, staleness, offline latency, and regime studies;
-- machine-specific C++ benchmarks and reproducible figures.
+- `src/fairvaluelab/capture/`: bounded public-feed capture and provenance.
+- `cpp/src/venue_adapters.cpp`, `capture_converter.cpp`, and `capture_validation.cpp`: source validation and normalization.
+- `cpp/src/order_book.cpp`, `feature_emitter.cpp`, and `cross_venue.cpp`: books, trailing features, and synchronization.
+- `cpp/src/research_sampler.cpp` and `research_dataset.cpp`: sampling and future targets.
+- `src/fairvaluelab/dataset.py` and `baseline.py`: leakage checks, chronological splits, and fixed models.
+- `src/fairvaluelab/research_workflow.py`: the ordered capture-to-figures workflow; adjacent study modules own each analysis.
 
-## Research methodology
-
-Local receipt time is the synchronization timeline. Exchange timestamps are retained for auditing and within-venue fields but are not assumed to be synchronized across venues. At sample time `t`, a venue contributes only when its latest valid two-sided state is no later than `t` and no older than the configured freshness threshold. Missing or stale values remain undefined rather than being replaced with zero.
-
-For horizon `h`, the target is the first valid synchronized observation at or after `t + h`, subject to a maximum observation delay. Validators enforce:
-
-```text
-feature receipt timestamp <= sample timestamp
-target timestamp >= sample timestamp + horizon
-target delay = target timestamp - (sample timestamp + horizon)
-```
-
-Fitted studies use ordered 70% train, 15% validation, and 15% test partitions. Equal timestamps are not split. Training and validation rows are purged when their future targets cross the next partition boundary. Regime thresholds come only from the purged training partition. No random time-series split is used.
-
-The source assessment, exact normalization rules, feature definitions, target alignment, metrics, uncertainty method, and experiment limitations are documented in [research/methodology.md](research/methodology.md). Committed machine-readable outputs live under [`research/results/`](research/results/).
-
-## Measured results
-
-The main Ridge comparison uses 13 local features and 44 local-plus-cross-venue features:
-
-| Horizon | Local MAE | Cross-venue MAE | Local IC | Cross-venue IC | Test target std. dev. |
-|---:|---:|---:|---:|---:|---:|
-| 10 ms | 9.620556 | 14.481894 | 0.145772 | 0.101371 | 43.783893 |
-| 50 ms | 10.322595 | 15.092695 | 0.151519 | 0.110845 | 46.510994 |
-| 100 ms | 19.454271 | 25.809284 | 0.201919 | 0.171502 | 65.924925 |
-| 250 ms | 43.238553 | 49.700837 | 0.247502 | 0.215845 | 109.856521 |
-| 1 s | 141.223958 | 159.074527 | 0.307063 | 0.272493 | 262.905028 |
-
-MAE is in normalized price ticks. The committed [cross-venue results](research/results/cross_venue_results.csv) include paired time-block bootstrap intervals and directional fields.
-
-![Cross-venue coverage versus freshness threshold](research/figures/staleness_coverage.png)
+The [methodology](research/methodology.md) specifies receipt-time alignment, target
+delays, purging, features, and metrics. Machine-readable results live in
+[`research/results/`](research/results/).
 
 ## Performance
 
@@ -91,6 +60,7 @@ Install [uv](https://docs.astral.sh/uv/), CMake 3.20 or newer, and a C++20 compi
 ```console
 uv sync
 uv run ruff check .
+uv run mypy src
 uv run pytest
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -143,7 +113,7 @@ Large raw captures and generated datasets are intentionally excluded from Git. T
 
 ## Limitations
 
-- The study contains one approximately 30-minute capture and one chronological split; it does not establish behavior across other days or market conditions.
+- The study contains one approximately 30-minute capture and one chronological split; results may differ on other days or under other market conditions.
 - Binance `BTCUSDT` and Kraken `BTC/USD` have different quote currencies.
 - At the primary 100 ms freshness threshold, only 291 of 35,980 clock rows have both venues valid.
 - Live public capture reproduces a procedure, not identical historical events.

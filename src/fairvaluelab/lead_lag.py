@@ -7,17 +7,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from fairvaluelab.cli import parse_positive_integers
 from fairvaluelab.dataset import load_dataset
 
 DEFAULT_LAGS_NS = (10_000_000, 25_000_000, 50_000_000, 100_000_000, 250_000_000, 500_000_000)
 _VENUE_COLUMN = re.compile(r"^venue_(\d+)_")
-
-
-def parse_positive_integers(value: str) -> tuple[int, ...]:
-    values = tuple(int(item) for item in value.split(","))
-    if not values or any(item <= 0 for item in values) or len(set(values)) != len(values):
-        raise argparse.ArgumentTypeError("values must be unique positive integers")
-    return values
 
 
 def venue_ids(dataset: pd.DataFrame) -> list[int]:

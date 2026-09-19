@@ -78,8 +78,6 @@ std::size_t BookSide::size() const noexcept { return size_; }
 
 std::size_t BookSide::capacity() const noexcept { return depth_; }
 
-Side BookSide::side() const noexcept { return side_; }
-
 bool BookSide::is_better(const PriceTicks lhs, const PriceTicks rhs) const noexcept {
     return side_ == Side::Bid ? lhs > rhs : lhs < rhs;
 }

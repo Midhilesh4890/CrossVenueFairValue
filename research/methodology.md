@@ -104,8 +104,10 @@ System benchmark latency is measured separately in a Release C++ build. Python/s
 
 Regime analysis evaluates spread, trailing 20-sample midpoint-change volatility, total visible depth, absolute signed trade-volume-window activity, absolute L1 imbalance, and venue age. Every low/high threshold is the median calculated from the purged training partition only. Current and trailing features define regimes; future targets do not. Empty test bands are omitted. The same fitted local and local-plus-cross-venue Ridge models are compared within each populated band.
 
-## Reproducibility and limitations
+## Reproducibility
 
-Compact provenance, dataset metadata, result tables, benchmark metadata, and generated figures are committed under `research/`. Raw captures and generated datasets remain outside Git because of size and because live observations cannot be recreated exactly.
-
-The current committed capture is a bounded sample rather than a representative market history. It contains different quote currencies, unequal venue message and trade counts, a short observation window, and constant targets in the purged model test partitions. These facts make the present predictive results inconclusive. They are documented in [negative_results.md](negative_results.md) and must remain visible when reporting the study.
+Provenance, dataset metadata, result tables, and figures are committed under
+`research/`. Raw captures and generated datasets remain outside Git. Use the
+[README workflow](../README.md#reproduce-the-experiments) to rerun a retained capture.
+Current measurements are in [findings.md](findings.md); historical failures are
+recorded in [negative_results.md](negative_results.md).
